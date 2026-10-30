@@ -8,7 +8,7 @@ namespace LobotomyModernEngine.Diagnostics
     /// <summary>
     /// 計画書 Phase 0/1.5/B/Core 準拠: F9 キーでトグル可能なゲーム内診断オーバーレイ
     /// 古いMono 2.0互換（Array.Emptyを一切呼ばないゼロアロケーション設計）
-    /// ロード区間時間、Notice.Send/秒、TakeDamage/秒、GC回避数、WorkerPool稼働状況を表示
+    /// ロード区間時間、Notice.Send/秒、TakeDamage/秒、ネイティブリーク防止数、WorkerPool稼働状況を表示
     /// </summary>
     public class DiagnosticsOverlay : MonoBehaviour
     {
@@ -131,15 +131,15 @@ namespace LobotomyModernEngine.Diagnostics
 
             InitStyles();
 
-            float width = 360f;
-            float height = 350f;
+            float width = 375f;
+            float height = 385f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
 
             GUILayout.BeginArea(new Rect(18f, 10f, width - 16f, height - 10f));
             
-            GUILayout.Label("Lobotomy Modern Engine (F9)", _headerStyle, EmptyOptions);
+            GUILayout.Label("Lobotomy Modern Engine v0.4.0 (F9)", _headerStyle, EmptyOptions);
             GUILayout.Space(1f);
 
             // FPS & フレーム時間
@@ -153,34 +153,29 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Label(string.Format("GC Counts:  Gen0: {0} | Gen1: {1} | Gen2: {2}", _gcCount0, _gcCount1, _gcCount2), _labelStyle, EmptyOptions);
             GUILayout.Space(2f);
 
-            // 実行時最適化メトリクス
-            GUILayout.Label("Runtime Optimization Metrics:", _headerStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Notice.Send:    {0}/s (Avoided Alloc: {1})", _displayNoticePerSec, NoticePatch.AvoidedAllocations), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• TakeDamage:     {0}/s (0-Barrier Cut: {1})", _displayDamagePerSec, TakeDamagePatch.ZeroBarrierAllocAvoided), _labelStyle, EmptyOptions);
+            // 実行時最適化 & メモリリーク防止メトリクス
+            GUILayout.Label("Memory Leak & Hotpath Metrics:", _headerStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Spine PMA Cache: {0} hits / {1} cached (Leak Cut)", SpineAtlasCachePatch.CacheHitCount, SpineAtlasCachePatch.CachedRegionCount), _goodStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Cursor Leak Cut: {0} avoided ({1} cached)", CursorLeakPatch.AvoidedCursorTexAllocations, CursorLeakPatch.CachedCursorTextureCount), _goodStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Portrait Skip:   {0} LateUpdates skipped", WorkerPortraitPatch.AvoidedPortraitRebuilds), _labelStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Notice.Send:     {0}/s (Avoided Alloc: {1})", _displayNoticePerSec, NoticePatch.AvoidedAllocations), _labelStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• TakeDamage:      {0}/s (0-Barrier Cut: {1})", _displayDamagePerSec, TakeDamagePatch.ZeroBarrierAllocAvoided), _labelStyle, EmptyOptions);
             if (!string.IsNullOrEmpty(MetricsPatches.LastLoadedSceneName))
             {
-                GUILayout.Label(string.Format("• Last Load:      {0} ({1:F0} ms)", MetricsPatches.LastLoadedSceneName, MetricsPatches.LastLoadDurationMs), _labelStyle, EmptyOptions);
+                GUILayout.Label(string.Format("• Last Load:       {0} ({1:F0} ms)", MetricsPatches.LastLoadedSceneName, MetricsPatches.LastLoadDurationMs), _labelStyle, EmptyOptions);
             }
             if (MissingDataGuardPatch.GuardedCreatureCount > 0 || MissingDataGuardPatch.GuardedEquipmentCount > 0)
             {
-                GUILayout.Label(string.Format("• Guarded:        {0} Abno, {1} Equip", MissingDataGuardPatch.GuardedCreatureCount, MissingDataGuardPatch.GuardedEquipmentCount), _warnStyle, EmptyOptions);
+                GUILayout.Label(string.Format("• Guarded:         {0} Abno, {1} Equip", MissingDataGuardPatch.GuardedCreatureCount, MissingDataGuardPatch.GuardedEquipmentCount), _warnStyle, EmptyOptions);
             }
             GUILayout.Space(2f);
 
             // 並列・分散基盤ステータス
             GUILayout.Label("Core Architecture (LMF.Core):", _headerStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• WorkerPool:     {0} threads (Queue: {1}, Exec: {2}, Gen: {3})", 
-                BoundedWorkerPool.WorkerThreadCount, BoundedWorkerPool.CurrentQueueDepth, BoundedWorkerPool.TotalTasksExecuted, GenerationTracker.CurrentGeneration), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Dispatcher:     Queue: {0} (Done: {1}, Budget: {2:F1}ms)",
+            GUILayout.Label(string.Format("• WorkerPool:      {0}/{1} active (Queue: {2}, Gen: {3})", 
+                BoundedWorkerPool.ActiveThreadCount, BoundedWorkerPool.ConfiguredThreadCount, BoundedWorkerPool.CurrentQueueDepth, GenerationTracker.CurrentGeneration), _labelStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Dispatcher:      Queue: {0} (Done: {1}, Budget: {2:F1}ms)",
                 MainThreadDispatcher.QueueDepth, MainThreadDispatcher.TotalDispatchedCount, MainThreadDispatcher.FrameBudgetMs), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• FrameScheduler: {0} tasks registered", FrameBudgetScheduler.RegisteredTaskCount), _labelStyle, EmptyOptions);
-            GUILayout.Space(2f);
-
-            // パッチ稼働状態
-            GUILayout.Label("Active Overhaul Patches:", _headerStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Notice COW:     ACTIVE ({0} cached topics)", NoticePatch.ActiveTopicCount), _goodStyle, EmptyOptions);
-            GUILayout.Label("• Zero-Barrier:   ACTIVE (Transpiled hook)", _goodStyle, EmptyOptions);
-            GUILayout.Label("• Sefira / Sprite: ACTIVE (Cached)", _goodStyle, EmptyOptions);
 
             GUILayout.EndArea();
         }

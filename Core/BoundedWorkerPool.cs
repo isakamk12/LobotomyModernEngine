@@ -8,6 +8,7 @@ namespace LobotomyModernEngine.Core
     /// .NET 3.5 / Mono 2.0 互換の有界ワーカースレッドプール
     /// ThreadPool の乱用や Task / async / await に依存せず、
     /// 固定数の長寿命スレッドとロック付き有界キューで非同期計算を実行する。
+    /// 初回タスク投入時に遅延起動（Lazy Start）し、待機中はポーリングなしでスリープする。
     /// </summary>
     public static class BoundedWorkerPool
     {
@@ -22,41 +23,57 @@ namespace LobotomyModernEngine.Core
         private static readonly Queue<WorkItem> TaskQueue = new Queue<WorkItem>(128);
         private static readonly object QueueLock = new object();
         private static readonly AutoResetEvent WorkEvent = new AutoResetEvent(false);
+        private static volatile bool _initialized = false;
+        private static volatile bool _threadsStarted = false;
         private static volatile bool _running = false;
 
-        public static int WorkerThreadCount { get; private set; }
+        public static int ConfiguredThreadCount { get; private set; }
+        public static int ActiveThreadCount => _threadsStarted ? ConfiguredThreadCount : 0;
+        public static int WorkerThreadCount => ConfiguredThreadCount;
         public static long TotalTasksExecuted = 0;
         public static long TotalTasksDropped = 0;
         public static int CurrentQueueDepth => TaskQueue.Count;
 
         /// <summary>
-        /// ワーカープールの初期化
+        /// ワーカープールの設定初期化（スレッド生成は初回Submitまで遅延）
         /// </summary>
         public static void Initialize(int maxThreads)
         {
-            if (_running) return;
+            if (_initialized) return;
 
             int cpuCount = Environment.ProcessorCount;
-            // 計画書準拠: min(max(ProcessorCount - 2, 1), 4)
             int threadCount = Math.Min(Math.Max(cpuCount - 2, 1), Math.Min(maxThreads, 4));
-            WorkerThreadCount = threadCount;
-
+            ConfiguredThreadCount = threadCount;
+            _initialized = true;
             _running = true;
-            _workers = new Thread[threadCount];
 
-            for (int i = 0; i < threadCount; i++)
+            Plugin.Logger.LogInfo(string.Format("[LME WorkerPool] Configured for up to {0} lazy worker thread(s) (CPU: {1}).", threadCount, cpuCount));
+        }
+
+        private static void EnsureThreadsStarted()
+        {
+            if (_threadsStarted || !_running) return;
+
+            lock (QueueLock)
             {
-                int workerIndex = i;
-                _workers[i] = new Thread(() => WorkerLoop(workerIndex))
-                {
-                    Name = string.Format("LME-Worker-{0}", workerIndex),
-                    IsBackground = true,
-                    Priority = ThreadPriority.BelowNormal // ゲームのメインスレッドを最優先
-                };
-                _workers[i].Start();
-            }
+                if (_threadsStarted || !_running) return;
 
-            Plugin.Logger.LogInfo(string.Format("[LME WorkerPool] Initialized {0} worker thread(s) (CPU: {1}).", threadCount, cpuCount));
+                _workers = new Thread[ConfiguredThreadCount];
+                for (int i = 0; i < ConfiguredThreadCount; i++)
+                {
+                    int workerIndex = i;
+                    _workers[i] = new Thread(() => WorkerLoop(workerIndex))
+                    {
+                        Name = string.Format("LME-Worker-{0}", workerIndex),
+                        IsBackground = true,
+                        Priority = ThreadPriority.BelowNormal
+                    };
+                    _workers[i].Start();
+                }
+
+                _threadsStarted = true;
+                Plugin.Logger.LogInfo(string.Format("[LME WorkerPool] Lazily started {0} worker thread(s).", ConfiguredThreadCount));
+            }
         }
 
         /// <summary>
@@ -74,9 +91,10 @@ namespace LobotomyModernEngine.Core
         {
             if (!_running || work == null) return false;
 
+            EnsureThreadsStarted();
+
             lock (QueueLock)
             {
-                // 有界キュー制御: 256 件を超えたら過負荷防止のため破棄
                 if (TaskQueue.Count >= 256)
                 {
                     TotalTasksDropped++;
@@ -140,12 +158,16 @@ namespace LobotomyModernEngine.Core
                     {
                         item = TaskQueue.Dequeue();
                         hasWork = true;
+                        if (TaskQueue.Count > 0)
+                        {
+                            // まだ残りタスクがあれば別スレッドも起こす
+                            WorkEvent.Set();
+                        }
                     }
                 }
 
                 if (hasWork)
                 {
-                    // 世代検証: 古い世代のタスクは即座にスキップ
                     if (GenerationTracker.IsValid(item.Generation))
                     {
                         try
@@ -166,8 +188,7 @@ namespace LobotomyModernEngine.Core
                 }
                 else
                 {
-                    // タスクがなければシグナルを待機
-                    WorkEvent.WaitOne(500);
+                    WorkEvent.WaitOne();
                 }
             }
         }
@@ -180,14 +201,19 @@ namespace LobotomyModernEngine.Core
             if (!_running) return;
 
             _running = false;
-            WorkEvent.Set();
 
-            if (_workers != null)
+            if (_threadsStarted && _workers != null)
             {
+                for (int i = 0; i < _workers.Length; i++)
+                {
+                    WorkEvent.Set();
+                }
+
                 for (int i = 0; i < _workers.Length; i++)
                 {
                     if (_workers[i] != null && _workers[i].IsAlive)
                     {
+                        WorkEvent.Set();
                         _workers[i].Join(200);
                     }
                 }

@@ -17,13 +17,16 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.3.0";
+        public const string PLUGIN_VERSION = "0.4.0";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
 
-        // Config 設定
+        // Config 設定（全パッチを個別にON/OFF・切り戻し可能）
         public static ConfigEntry<bool> EnableEngineOverhaul;
+        public static ConfigEntry<bool> EnableSpineAtlasCache;
+        public static ConfigEntry<bool> EnableCursorLeakFix;
+        public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
         public static ConfigEntry<bool> EnableNoticeCopyOnWrite;
         public static ConfigEntry<bool> EnableZeroBarrierOptimization;
         public static ConfigEntry<bool> EnableWorkerSpriteCache;
@@ -42,13 +45,16 @@ namespace LobotomyModernEngine
 
             // 設定の初期化
             EnableEngineOverhaul = Config.Bind("General", "EnableEngineOverhaul", true, "全般的な最適化パッチを有効化する");
+            EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止");
+            EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止");
+            EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止");
             EnableNoticeCopyOnWrite = Config.Bind("Optimization", "NoticeCopyOnWrite", true, "Notice.Send の Copy-on-Write ゼロアロケーション化");
             EnableZeroBarrierOptimization = Config.Bind("Optimization", "ZeroBarrierOptimization", true, "TakeDamage のバリア0件時アロケーション消去 (Transpiler)");
             EnableWorkerSpriteCache = Config.Bind("Optimization", "WorkerSpriteCache", true, "WorkerSpriteSetter の GetComponent キャッシュ化");
             EnableIsolateRoomOptimization = Config.Bind("Optimization", "IsolateRoomOptimization", true, "IsolateRoom の UI Canvas 再描画スパム防止");
             EnableSefiraPanelOptimization = Config.Bind("Optimization", "SefiraPanelOptimization", true, "SefiraPanel の NoData/Portrait キャッシュ化");
             EnablePassableOptimization = Config.Bind("Optimization", "PassableOptimization", true, "CheckPassable の走査最適化");
-            MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4)");
+            MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4, 初回タスク投入時に遅延起動)");
             EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", false, "定期的にFPS・メモリ・GC情報をログ出力する");
 
             // LMF.Core 基盤コンポーネントの初期化
@@ -72,6 +78,19 @@ namespace LobotomyModernEngine
 
                 if (EnablePassableOptimization.Value)
                     ApplyAndVerifyPatch(typeof(CheckPassablePatch), "MovableObjectNode (CheckPassable Scan Optimization)");
+
+                // v0.4.0 3大ネイティブメモリリーク＆UIスパム修正パッチ
+                if (EnableSpineAtlasCache.Value)
+                    ApplyAndVerifyPatch(typeof(SpineAtlasCachePatch), "SpineAtlasCache (Animation Texture2D/Material Leak Fix)");
+
+                if (EnableCursorLeakFix.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(CursorLeakPatch.CursorManager_SetCursorScale_Patch), "CursorLeakFix (SetCursorScale Quantized Cache)");
+                    ApplyAndVerifyPatch(typeof(CursorLeakPatch.WorkerSpriteManager_ScaleTexture_Patch), "CursorLeakFix (ScaleTexture Cache)");
+                }
+
+                if (EnableWorkerPortraitOptimization.Value)
+                    ApplyAndVerifyPatch(typeof(WorkerPortraitPatch), "WorkerPortraitSetter (LateUpdate Dirty Check)");
                 
                 // セーブデータガード
                 ApplyAndVerifyPatch(typeof(MissingDataGuardPatch.InventoryModel_CreateEquipment_Patch), "MissingDataGuard (Equipment Skip)");
@@ -113,15 +132,17 @@ namespace LobotomyModernEngine
             // 世代番号を更新（旧世代の非同期ジョブを無効化）
             int nextGen = GenerationTracker.NextGeneration();
 
-            // シーン遷移時にキャッシュ全消去（インスタンスID再利用・トピック変更を完全反映）
+            // シーン遷移時にシーン固有キャッシュを消去・破棄済み参照を掃除
             WorkerSpriteSetterPatch.ClearCache();
             IsolateRoomPatch.ClearCache();
             SefiraPanelPatch.ClearCache();
+            WorkerPortraitPatch.ClearCache();
             NoticePatch.ClearCache();
+            SpineAtlasCachePatch.PruneDeadReferences();
             MainThreadDispatcher.Clear();
             FrameBudgetScheduler.Clear();
 
-            Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, cleared all caches.", scene.name, nextGen));
+            Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, cleaned caches.", scene.name, nextGen));
         }
 
         private void ApplyAndVerifyPatch(Type patchType, string patchName)
@@ -153,6 +174,8 @@ namespace LobotomyModernEngine
             {
                 WorkerSpriteSetterPatch.PruneDeadReferences();
                 IsolateRoomPatch.PruneDeadReferences();
+                WorkerPortraitPatch.PruneDeadReferences();
+                SpineAtlasCachePatch.PruneDeadReferences();
                 _lastPruneTime = Time.unscaledTime;
             }
         }
@@ -168,6 +191,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.3.0";
+        public const string PLUGIN_VERSION = "0.4.0";
     }
 }
