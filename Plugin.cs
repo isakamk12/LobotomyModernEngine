@@ -144,8 +144,9 @@ namespace LobotomyModernEngine
                 // デバッグ強化LOBポイント一律1パッチ
                 if (EnableCheapStatUpgrade.Value)
                 {
-                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init_Patch), "DebugStatCost (StatUI Cost Array Hook)");
-                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatController_SetCost_Patch), "DebugStatCost (StatController SetCost Hook)");
+                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init0_Patch), "DebugStatCost (StatUI Cost Array Hook)");
+                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init1_Patch), "DebugStatCost (StatUI Data Init Hook)");
+                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatController_SetCost_Patch), "DebugStatCost (StatController 1-LOB Hook)");
                 }
 
                 // UIテキストサイズ・エンサイクロペディア・ギフト・ローディング文字切れピンポイント修正パッチ
@@ -155,6 +156,7 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_TypeInfo_Patch), "UITextReadability (Encyclopedia GiftSlot TypeInfo)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_Model_Patch), "UITextReadability (Encyclopedia GiftSlot Model)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentGiftSlot_SetData_Patch), "UITextReadability (InGameUI AgentGiftSlot Data)");
+                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.LocalizeTextLoadScript_SetText_Patch), "UITextReadability (Loading Screen Localize Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.ContinueLoadingScene_OnEnable_Patch), "UITextReadability (ContinueLoadingScene Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.TitleEndScene_OnEnable_Patch), "UITextReadability (TitleEndScene Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.StoryEndScene_OnEnable_Patch), "UITextReadability (StoryEndScene Overflow)");

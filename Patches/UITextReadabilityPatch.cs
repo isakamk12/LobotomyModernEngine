@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using Assets.Scripts.UI.Utils;
 using CreatureInfo;
 using HarmonyLib;
 using InGameUI;
@@ -9,8 +9,7 @@ using UnityEngine.UI;
 namespace LobotomyModernEngine.Patches
 {
     /// <summary>
-    /// UIテキストサイズ・視認性・文字切れ修正パッチ (v0.7.0 改訂版)
-    /// 画面全体のレイアウト破壊・文字極小化を防ぐため、ユーザーが要望された箇所に完全特化:
+    /// UIテキストサイズ・視認性・文字切れ修正パッチ (v0.7.2 改訂版)
     /// 1. エンサイクロペディアのアブノーマリティ記録 (CreatureInfoWindow.SetDesc):
     ///    - 段落フォントを適度に拡大(20pt)し、Canvas強制更新により正確な preferredHeight で段落重なりなく綺麗に配置。
     /// 2. エンサイクロペディアの E.G.O ギフト欄 (GiftSlot.ItemTrait):
@@ -18,7 +17,8 @@ namespace LobotomyModernEngine.Patches
     /// 3. 管理中職員のギフト説明文 (InGameUI.AgentGiftSlot):
     ///    - 効果テキストの最小フォント下限を引き上げ。
     /// 4. ローディング画面の文字切れ ("システム初期化" が3文字で切れる問題など):
-    ///    - テキストの Horizontal/Vertical Overflow を解放して全文字を正常表示。
+    ///    - LocalizeTextLoadScript の id が "ContinueScene@" やローディング画面に該当する場合、
+    ///      確実に横幅拡張(1200px)と Horizontal/Vertical Overflow を解放して全文字フル表示。
     /// </summary>
     public static class UITextReadabilityPatch
     {
@@ -46,7 +46,6 @@ namespace LobotomyModernEngine.Patches
 
                 if (__instance.descList.Count == 0) return;
 
-                // フォントサイズを読みやすい20ptに設定
                 const int storyFontSize = 20;
 
                 for (int i = 0; i < __instance.descList.Count; i++)
@@ -61,7 +60,6 @@ namespace LobotomyModernEngine.Patches
                     descText.lineSpacing = 1.15f;
                 }
 
-                // 正確な preferredHeight を計算するために UI Canvas を即時反映
                 UnityEngine.Canvas.ForceUpdateCanvases();
 
                 float currentY = 0f;
@@ -110,14 +108,12 @@ namespace LobotomyModernEngine.Patches
         {
             if (!IsEnabled || slot == null) return;
 
-            // ギフト名称
             if (slot.ItemName != null)
             {
                 slot.ItemName.resizeTextMinSize = 14;
                 slot.ItemName.resizeTextMaxSize = 18;
             }
 
-            // ギフト効果説明文 (ItemTrait): 3行テキストの極小化(10pt)を防止
             if (slot.ItemTrait != null)
             {
                 slot.ItemTrait.resizeTextMinSize = 14;
@@ -155,17 +151,40 @@ namespace LobotomyModernEngine.Patches
         // =========================================================================
         // 4. ローディング画面の文字切れ修正 ("システム初期化" が3文字で切れる問題など)
         // =========================================================================
-        private static void FixLoadingScreenText(Text t)
+        private static void FixLoadingText(Text t)
         {
-            if (t == null || !IsEnabled) return;
+            if (t == null) return;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.verticalOverflow = VerticalWrapMode.Overflow;
             RectTransform rt = t.rectTransform;
-            if (rt != null && rt.sizeDelta.x > 0f && rt.sizeDelta.x < 900f)
+            if (rt != null)
             {
-                rt.sizeDelta = new Vector2(900f, rt.sizeDelta.y);
+                rt.sizeDelta = new Vector2(Mathf.Max(rt.sizeDelta.x, 1200f), Mathf.Max(rt.sizeDelta.y, 60f));
             }
             EnhancedTextCount++;
+        }
+
+        /// <summary>
+        /// LocalizeTextLoadScript でローディング関連ID (ContinueScene@ 等) のテキストが代入された瞬間に
+        /// 横幅とOverflowを解放し、文字切れを100%防止する
+        /// </summary>
+        [HarmonyPatch(typeof(LocalizeTextLoadScript), "SetText", new Type[0])]
+        public static class LocalizeTextLoadScript_SetText_Patch
+        {
+            public static void Postfix(LocalizeTextLoadScript __instance)
+            {
+                if (!IsEnabled || __instance == null || string.IsNullOrEmpty(__instance.id)) return;
+
+                string id = __instance.id;
+                if (id.StartsWith("ContinueScene@") ||
+                    id.StartsWith("Loading") ||
+                    id.StartsWith("TitleEndScene") ||
+                    id.StartsWith("StoryEndScene") ||
+                    id.StartsWith("DayEndScene"))
+                {
+                    FixLoadingText(__instance.Text);
+                }
+            }
         }
 
         [HarmonyPatch(typeof(ContinueLoadingScene), "OnEnable")]
@@ -178,9 +197,9 @@ namespace LobotomyModernEngine.Patches
                 {
                     for (int i = 0; i < __instance.texts.Length; i++)
                     {
-                        if (__instance.texts[i] != null)
+                        if (__instance.texts[i] != null && __instance.texts[i].text != null)
                         {
-                            FixLoadingScreenText(__instance.texts[i].text);
+                            FixLoadingText(__instance.texts[i].text);
                         }
                     }
                 }
@@ -190,8 +209,7 @@ namespace LobotomyModernEngine.Patches
                     {
                         if (__instance.sefiras[j] != null && __instance.sefiras[j].name != null)
                         {
-                            __instance.sefiras[j].name.horizontalOverflow = HorizontalWrapMode.Overflow;
-                            __instance.sefiras[j].name.verticalOverflow = VerticalWrapMode.Overflow;
+                            FixLoadingText(__instance.sefiras[j].name);
                         }
                     }
                 }
@@ -208,7 +226,7 @@ namespace LobotomyModernEngine.Patches
                 {
                     if (__instance.texts[i] != null)
                     {
-                        FixLoadingScreenText(__instance.texts[i].text);
+                        FixLoadingText(__instance.texts[i].text);
                     }
                 }
             }
@@ -224,7 +242,7 @@ namespace LobotomyModernEngine.Patches
                 {
                     if (__instance.texts[i] != null)
                     {
-                        FixLoadingScreenText(__instance.texts[i].text);
+                        FixLoadingText(__instance.texts[i].text);
                     }
                 }
             }
@@ -240,7 +258,7 @@ namespace LobotomyModernEngine.Patches
                 {
                     if (__instance.texts[i] != null && __instance.texts[i].text != null)
                     {
-                        FixLoadingScreenText(__instance.texts[i].text);
+                        FixLoadingText(__instance.texts[i].text);
                     }
                 }
             }

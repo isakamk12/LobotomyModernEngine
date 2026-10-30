@@ -1,22 +1,21 @@
 using System;
+using System.Reflection;
 using Customizing;
 using HarmonyLib;
+using UnityEngine;
 
 namespace LobotomyModernEngine.Patches
 {
     /// <summary>
     /// 職員のステータス強化（勇気・慎重・自制・正義）に必要なLOBポイントを一律1にするパッチ。
-    /// デバッグ・レベリング短縮用。ConfigでON/OFF切り替え可能。
+    /// 1段階強化するごとに消費コストが「1 LOB」になる。ConfigでON/OFF切り替え可能。
     /// </summary>
     public static class StatUpgradeCostPatch
     {
         private static readonly int[] CheapCostAry = new int[] { 0, 1, 1, 1, 1, 1, 1 };
 
-        private static int[] _originalRCost;
-        private static int[] _originalWCost;
-        private static int[] _originalBCost;
-        private static int[] _originalPCost;
-        private static bool _backupCaptured = false;
+        private static readonly FieldInfo _currentCostField = AccessTools.Field(typeof(StatUI.StatController), "_currentCost");
+        private static readonly FieldInfo _statUIField = AccessTools.Field(typeof(StatUI.StatController), "statUI");
 
         public static bool IsEnabled
         {
@@ -26,60 +25,99 @@ namespace LobotomyModernEngine.Patches
             }
         }
 
-        private static void CaptureOriginalCosts()
-        {
-            if (_backupCaptured) return;
-            if (StatUI.RCost != null) _originalRCost = (int[])StatUI.RCost.Clone();
-            if (StatUI.WCost != null) _originalWCost = (int[])StatUI.WCost.Clone();
-            if (StatUI.BCost != null) _originalBCost = (int[])StatUI.BCost.Clone();
-            if (StatUI.PCost != null) _originalPCost = (int[])StatUI.PCost.Clone();
-            _backupCaptured = true;
-        }
-
         [HarmonyPatch(typeof(StatUI), "Init", new Type[0])]
-        public static class StatUI_Init_Patch
+        public static class StatUI_Init0_Patch
         {
             public static void Prefix(StatUI __instance)
             {
-                CaptureOriginalCosts();
-
-                if (IsEnabled)
-                {
-                    StatUI.RCost = CheapCostAry;
-                    StatUI.WCost = CheapCostAry;
-                    StatUI.BCost = CheapCostAry;
-                    StatUI.PCost = CheapCostAry;
-                }
-                else if (_backupCaptured)
-                {
-                    StatUI.RCost = _originalRCost;
-                    StatUI.WCost = _originalWCost;
-                    StatUI.BCost = _originalBCost;
-                    StatUI.PCost = _originalPCost;
-                }
-            }
-
-            public static void Postfix(StatUI __instance)
-            {
-                if (IsEnabled && __instance != null)
-                {
-                    if (__instance.RStat != null) __instance.RStat.SetCostAry(CheapCostAry);
-                    if (__instance.WStat != null) __instance.WStat.SetCostAry(CheapCostAry);
-                    if (__instance.BStat != null) __instance.BStat.SetCostAry(CheapCostAry);
-                    if (__instance.PStat != null) __instance.PStat.SetCostAry(CheapCostAry);
-                }
+                if (!IsEnabled) return;
+                StatUI.RCost = CheapCostAry;
+                StatUI.WCost = CheapCostAry;
+                StatUI.BCost = CheapCostAry;
+                StatUI.PCost = CheapCostAry;
             }
         }
 
+        [HarmonyPatch(typeof(StatUI), "Init", new Type[] { typeof(AgentData), typeof(bool) })]
+        public static class StatUI_Init1_Patch
+        {
+            public static void Postfix(StatUI __instance)
+            {
+                if (!IsEnabled || __instance == null) return;
+                // 各ステータスのコストを再計算
+                if (__instance.RStat != null) __instance.RStat.SetCost();
+                if (__instance.WStat != null) __instance.WStat.SetCost();
+                if (__instance.BStat != null) __instance.BStat.SetCost();
+                if (__instance.PStat != null) __instance.PStat.SetCost();
+            }
+        }
+
+        /// <summary>
+        /// StatController.SetCost を直接置き換え、1段階につき一律「1 LOB」として確定計算する。
+        /// ボタンリスナーの多重登録を防ぎ、100%確実に反映させる。
+        /// </summary>
         [HarmonyPatch(typeof(StatUI.StatController), "SetCost")]
         public static class StatController_SetCost_Patch
         {
-            public static void Prefix(StatUI.StatController __instance)
+            public static bool Prefix(StatUI.StatController __instance)
             {
-                if (!IsEnabled || __instance == null) return;
+                if (!IsEnabled || __instance == null) return true;
 
-                // コスト配列がCheapCostAryでない場合は差し替え
-                __instance.SetCostAry(CheapCostAry);
+                try
+                {
+                    if (__instance.CurrentBonus == 0 && __instance.OriginalLevel >= StatUI.MaxStatLevel)
+                    {
+                        if (_currentCostField != null) _currentCostField.SetValue(__instance, 0);
+                        if (__instance.CostText != null) __instance.CostText.text = "0";
+                        if (CustomizingWindow.CurrentWindow != null)
+                        {
+                            if (__instance.PointText != null) __instance.PointText.color = CustomizingWindow.CurrentWindow.Normal;
+                            if (__instance.CostText != null) __instance.CostText.color = CustomizingWindow.CurrentWindow.Normal;
+                        }
+                        __instance.SetGradeText(__instance.OriginalLevel);
+                        return false;
+                    }
+
+                    // 1段階あたり一律 1 LOB
+                    int cost = __instance.CurrentBonus > 0 ? __instance.CurrentBonus : 0;
+                    if (_currentCostField != null) _currentCostField.SetValue(__instance, cost);
+                    if (__instance.CostText != null) __instance.CostText.text = cost.ToString();
+                    if (__instance.PointText != null) __instance.PointText.text = "LOB";
+
+                    if (CustomizingWindow.CurrentWindow != null)
+                    {
+                        if (__instance.CurrentBonus == 0)
+                        {
+                            if (__instance.PointText != null) __instance.PointText.color = CustomizingWindow.CurrentWindow.Normal;
+                            if (__instance.CostText != null) __instance.CostText.color = CustomizingWindow.CurrentWindow.Normal;
+                        }
+                        else
+                        {
+                            if (__instance.PointText != null) __instance.PointText.color = CustomizingWindow.CurrentWindow.Blue;
+                            if (__instance.CostText != null) __instance.CostText.color = CustomizingWindow.CurrentWindow.Blue;
+                        }
+                    }
+
+                    __instance.SetGradeText(__instance.OriginalLevel + __instance.CurrentBonus);
+
+                    StatUI parentStatUI = _statUIField != null ? _statUIField.GetValue(__instance) as StatUI : null;
+                    if (parentStatUI != null)
+                    {
+                        // 合計追加コストを再集計
+                        int total = 0;
+                        if (parentStatUI.RStat != null) total += parentStatUI.RStat.CurrentCost;
+                        if (parentStatUI.WStat != null) total += parentStatUI.WStat.CurrentCost;
+                        if (parentStatUI.BStat != null) total += parentStatUI.BStat.CurrentCost;
+                        if (parentStatUI.PStat != null) total += parentStatUI.PStat.CurrentCost;
+                        parentStatUI.CurrentAdditionalCost = total;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError(string.Format("[LME StatUpgradeCost] Error in SetCost: {0}", ex.Message));
+                }
+
+                return false;
             }
         }
     }
