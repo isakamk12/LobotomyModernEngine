@@ -127,36 +127,36 @@ namespace LobotomyModernEngine.Patches
                 // Lv1職員でも即装備できるように装着条件をクリアし、Gradeは5(ALEPH相当のランク補正)へ引き上げ
                 info.requires.Clear();
                 info.grade = "5";
-                if (info.maxNum < 20)
+                if (info.maxNum < 50)
                 {
-                    info.maxNum = 20;
+                    info.maxNum = 50;
                 }
 
                 if (info.type == EquipmentTypeInfo.EquipmentType.WEAPON)
                 {
-                    // 警棒(ID:1) および 懺悔武器(OneBadManyGoodWeapon): 超高火力・超高速・遠距離化で即座に鎮圧完了
-                    if (info.damageInfos != null)
+                    // 警棒(ID:1) および 懺悔武器(OneBadManyGoodWeapon):
+                    // 相手の耐性・ランク差補正・数万のHPを問答無用で消し飛ばすデバッグ神火力 (全属性複合 80,000~200,000ダメージ、超速射)
+                    info.damageInfos = new DamageInfo[]
                     {
-                        for (int i = 0; i < info.damageInfos.Length; i++)
-                        {
-                            info.damageInfos[i].min = 500f;
-                            info.damageInfos[i].max = 999f;
-                        }
-                    }
-                    info.range = 15f;
-                    info.attackSpeed = 0.4f;
+                        new DamageInfo(RwbpType.R, 20000, 50000),
+                        new DamageInfo(RwbpType.W, 20000, 50000),
+                        new DamageInfo(RwbpType.B, 20000, 50000),
+                        new DamageInfo(RwbpType.P, 20000, 50000)
+                    };
+                    info.range = 20f;
+                    info.attackSpeed = 0.2f;
                     count++;
                     itemSummary.Add(string.Format("Weapon#{0}({1})", info.id, string.IsNullOrEmpty(info.script) ? "Default" : info.script));
                 }
                 else if (info.type == EquipmentTypeInfo.EquipmentType.ARMOR)
                 {
-                    // スーツ(ID:22) および 懺悔防具(OneBadManyGoodArmor): 全属性 0.01倍 (99%軽減) で作業・鎮圧中の即死やパニックを完全防止
+                    // スーツ(ID:22) および 懺悔防具(OneBadManyGoodArmor): 全属性 0.001倍 (99.9%軽減) で作業・鎮圧中の即死やパニックを完全防御
                     if (info.defenseInfo != null)
                     {
-                        info.defenseInfo.R = 0.01f;
-                        info.defenseInfo.W = 0.01f;
-                        info.defenseInfo.B = 0.01f;
-                        info.defenseInfo.P = 0.01f;
+                        info.defenseInfo.R = 0.001f;
+                        info.defenseInfo.W = 0.001f;
+                        info.defenseInfo.B = 0.001f;
+                        info.defenseInfo.P = 0.001f;
                     }
                     count++;
                     itemSummary.Add(string.Format("Armor#{0}({1})", info.id, string.IsNullOrEmpty(info.script) ? "Default" : info.script));
