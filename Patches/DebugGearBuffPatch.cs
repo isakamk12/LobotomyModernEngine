@@ -135,16 +135,13 @@ namespace LobotomyModernEngine.Patches
                 if (info.type == EquipmentTypeInfo.EquipmentType.WEAPON)
                 {
                     // 警棒(ID:1) および 懺悔武器(OneBadManyGoodWeapon):
-                    // 相手の耐性・ランク差補正・数万のHPを問答無用で消し飛ばすデバッグ神火力 (全属性複合 80,000~200,000ダメージ、超速射)
+                    // 相手の耐性・ランク差補正・数万のHPを問答無用で消し飛ばすデバッグ神火力 (100,000~150,000ダメージ、超速射、長射程)
                     info.damageInfos = new DamageInfo[]
                     {
-                        new DamageInfo(RwbpType.R, 20000, 50000),
-                        new DamageInfo(RwbpType.W, 20000, 50000),
-                        new DamageInfo(RwbpType.B, 20000, 50000),
-                        new DamageInfo(RwbpType.P, 20000, 50000)
+                        new DamageInfo(RwbpType.P, 100000, 150000)
                     };
-                    info.range = 20f;
-                    info.attackSpeed = 0.2f;
+                    info.range = 25f;
+                    info.attackSpeed = 0.15f;
                     count++;
                     itemSummary.Add(string.Format("Weapon#{0}({1})", info.id, string.IsNullOrEmpty(info.script) ? "Default" : info.script));
                 }
@@ -213,6 +210,46 @@ namespace LobotomyModernEngine.Patches
             if (Plugin.Logger != null && restored > 0)
             {
                 Plugin.Logger.LogInfo(string.Format("[LME DebugGear] Restored vanilla stats for {0} starter gear items.", restored));
+            }
+        }
+
+        /// <summary>
+        /// デバッグ武器による攻撃時、相手の耐性を自動判定して最もダメージの通る属性へ動的変換し、
+        /// 相手が吸収(回復)する属性や耐性による威力減衰を完全に無効化して真の1撃鎮圧を実現する。
+        /// </summary>
+        [HarmonyPatch(typeof(EquipmentScriptBase), "OnGiveDamage")]
+        public static class EquipmentScriptBase_OnGiveDamage_Patch
+        {
+            public static void Prefix(EquipmentScriptBase __instance, UnitModel actor, UnitModel target, ref DamageInfo dmg)
+            {
+                if (Plugin.EnableDebugStarterGearBuff == null || !Plugin.EnableDebugStarterGearBuff.Value)
+                    return;
+
+                if (__instance == null || __instance.model == null || __instance.model.metaInfo == null)
+                    return;
+
+                int id = __instance.model.metaInfo.id;
+                if (id == 1 || id == 200009)
+                {
+                    if (target != null && target.defense != null)
+                    {
+                        RwbpType bestType = RwbpType.P;
+                        float bestMult = -999f;
+                        RwbpType[] types = new RwbpType[] { RwbpType.R, RwbpType.W, RwbpType.B, RwbpType.P };
+                        for (int i = 0; i < types.Length; i++)
+                        {
+                            float mult = target.defense.GetMultiplier(types[i]);
+                            if (mult > bestMult)
+                            {
+                                bestMult = mult;
+                                bestType = types[i];
+                            }
+                        }
+                        dmg.type = bestType;
+                    }
+                    dmg.min = 100000f;
+                    dmg.max = 150000f;
+                }
             }
         }
     }

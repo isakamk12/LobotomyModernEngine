@@ -17,6 +17,14 @@ namespace LobotomyModernEngine.Patches
         private static readonly FieldInfo _currentCostField = AccessTools.Field(typeof(StatUI.StatController), "_currentCost");
         private static readonly FieldInfo _statUIField = AccessTools.Field(typeof(StatUI.StatController), "statUI");
 
+        static StatUpgradeCostPatch()
+        {
+            StatUI.RCost = CheapCostAry;
+            StatUI.WCost = CheapCostAry;
+            StatUI.BCost = CheapCostAry;
+            StatUI.PCost = CheapCostAry;
+        }
+
         public static bool IsEnabled
         {
             get
@@ -101,6 +109,10 @@ namespace LobotomyModernEngine.Patches
                     __instance.SetGradeText(__instance.OriginalLevel + __instance.CurrentBonus);
 
                     StatUI parentStatUI = _statUIField != null ? _statUIField.GetValue(__instance) as StatUI : null;
+                    if (parentStatUI == null && CustomizingWindow.CurrentWindow != null)
+                    {
+                        parentStatUI = CustomizingWindow.CurrentWindow.statUI;
+                    }
                     if (parentStatUI != null)
                     {
                         // 合計追加コストを再集計

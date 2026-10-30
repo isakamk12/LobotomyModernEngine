@@ -110,15 +110,17 @@ namespace LobotomyModernEngine.Patches
 
             if (slot.ItemName != null)
             {
-                slot.ItemName.resizeTextMinSize = 14;
-                slot.ItemName.resizeTextMaxSize = 18;
+                slot.ItemName.resizeTextForBestFit = false;
+                slot.ItemName.fontSize = 16;
+                slot.ItemName.horizontalOverflow = HorizontalWrapMode.Wrap;
             }
 
             if (slot.ItemTrait != null)
             {
-                slot.ItemTrait.resizeTextMinSize = 14;
-                slot.ItemTrait.resizeTextMaxSize = 17;
-                slot.ItemTrait.verticalOverflow = VerticalWrapMode.Truncate;
+                slot.ItemTrait.resizeTextForBestFit = false;
+                slot.ItemTrait.fontSize = 15;
+                slot.ItemTrait.horizontalOverflow = HorizontalWrapMode.Wrap;
+                slot.ItemTrait.verticalOverflow = VerticalWrapMode.Overflow;
                 EnhancedTextCount++;
             }
         }
@@ -135,14 +137,14 @@ namespace LobotomyModernEngine.Patches
 
                 if (__instance.GiftName != null)
                 {
-                    __instance.GiftName.resizeTextMinSize = 14;
-                    __instance.GiftName.resizeTextMaxSize = 18;
+                    __instance.GiftName.resizeTextForBestFit = false;
+                    __instance.GiftName.fontSize = 16;
                 }
 
                 if (__instance.GiftDescription != null)
                 {
-                    __instance.GiftDescription.resizeTextMinSize = 14;
-                    __instance.GiftDescription.resizeTextMaxSize = 16;
+                    __instance.GiftDescription.resizeTextForBestFit = false;
+                    __instance.GiftDescription.fontSize = 15;
                     EnhancedTextCount++;
                 }
             }
@@ -154,12 +156,21 @@ namespace LobotomyModernEngine.Patches
         private static void FixLoadingText(Text t)
         {
             if (t == null) return;
+            t.resizeTextForBestFit = false;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.verticalOverflow = VerticalWrapMode.Overflow;
             RectTransform rt = t.rectTransform;
             if (rt != null)
             {
-                rt.sizeDelta = new Vector2(Mathf.Max(rt.sizeDelta.x, 1200f), Mathf.Max(rt.sizeDelta.y, 60f));
+                rt.sizeDelta = new Vector2(Mathf.Max(rt.sizeDelta.x, 800f), Mathf.Max(rt.sizeDelta.y, 50f));
+            }
+            Transform parent = t.transform.parent;
+            if (parent != null)
+            {
+                RectMask2D rmask = parent.GetComponent<RectMask2D>();
+                if (rmask != null) rmask.enabled = false;
+                Mask mask = parent.GetComponent<Mask>();
+                if (mask != null) mask.enabled = false;
             }
             EnhancedTextCount++;
         }

@@ -140,6 +140,7 @@ namespace LobotomyModernEngine
 
                 // デバッグ初期装備強化（ゲーム中にもON/OFF切替できるよう常時フックし、Config値に従って適用/復元）
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentDataLoader_Load_Patch), "DebugGearBuff (Starter & Penitence Gear Hook)");
+                ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentScriptBase_OnGiveDamage_Patch), "DebugGearBuff (Dynamic Weakness OnGiveDamage Hook)");
 
                 // デバッグ強化LOBポイント一律1パッチ
                 if (EnableCheapStatUpgrade.Value)
@@ -325,6 +326,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.1";
+        public const string PLUGIN_VERSION = "0.7.2";
     }
 }
