@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>LobotomyModernEngine</AssemblyName>
+    <RootNamespace>LobotomyModernEngine</RootNamespace>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- ゲーム本体およびBepInExの参照設定 -->
+  <ItemGroup>
+    <Reference Include="mscorlib">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\mscorlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\System.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Core">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\System.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- ビルド後に自動でBepInEx/pluginsへコピー -->
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\plugins" />
+  </Target>
+
+</Project>
+
