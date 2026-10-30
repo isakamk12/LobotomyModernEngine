@@ -52,6 +52,11 @@ namespace LobotomyModernEngine.Diagnostics
                 IsVisible = !IsVisible;
             }
 
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                DebugGearBuffPatch.ToggleBuff();
+            }
+
             float dt = Time.unscaledDeltaTime;
             _frameTimes[_sampleIndex] = dt;
             _sampleIndex = (_sampleIndex + 1) % SampleCount;
@@ -131,15 +136,15 @@ namespace LobotomyModernEngine.Diagnostics
 
             InitStyles();
 
-            float width = 375f;
-            float height = 385f;
+            float width = 395f;
+            float height = 460f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
 
             GUILayout.BeginArea(new Rect(18f, 10f, width - 16f, height - 10f));
             
-            GUILayout.Label("Lobotomy Modern Engine v0.4.0 (F9)", _headerStyle, EmptyOptions);
+            GUILayout.Label("Lobotomy Modern Engine v0.5.0 (F9:UI / F8:Gear)", _headerStyle, EmptyOptions);
             GUILayout.Space(1f);
 
             // FPS & フレーム時間
@@ -158,6 +163,7 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Label(string.Format("• Spine PMA Cache: {0} hits / {1} cached (Leak Cut)", SpineAtlasCachePatch.CacheHitCount, SpineAtlasCachePatch.CachedRegionCount), _goodStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Cursor Leak Cut: {0} avoided ({1} cached)", CursorLeakPatch.AvoidedCursorTexAllocations, CursorLeakPatch.CachedCursorTextureCount), _goodStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Portrait Skip:   {0} LateUpdates skipped", WorkerPortraitPatch.AvoidedPortraitRebuilds), _labelStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• List/Cam Cache:  {0} List / {1} Cam saved", WorkerListCachePatch.AvoidedReadOnlyAllocations, SpineOptimizerPatch.AvoidedCameraLookups), _labelStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Notice.Send:     {0}/s (Avoided Alloc: {1})", _displayNoticePerSec, NoticePatch.AvoidedAllocations), _labelStyle, EmptyOptions);
             GUILayout.Label(string.Format("• TakeDamage:      {0}/s (0-Barrier Cut: {1})", _displayDamagePerSec, TakeDamagePatch.ZeroBarrierAllocAvoided), _labelStyle, EmptyOptions);
             if (!string.IsNullOrEmpty(MetricsPatches.LastLoadedSceneName))
@@ -167,6 +173,18 @@ namespace LobotomyModernEngine.Diagnostics
             if (MissingDataGuardPatch.GuardedCreatureCount > 0 || MissingDataGuardPatch.GuardedEquipmentCount > 0)
             {
                 GUILayout.Label(string.Format("• Guarded:         {0} Abno, {1} Equip", MissingDataGuardPatch.GuardedCreatureCount, MissingDataGuardPatch.GuardedEquipmentCount), _warnStyle, EmptyOptions);
+            }
+            GUILayout.Space(2f);
+
+            // デバッグ装備強化ステータス & ワンクリック切替ボタン
+            bool gearBuffOn = DebugGearBuffPatch.IsCurrentlyApplied;
+            GUILayout.Label(
+                string.Format("• Debug Gear Buff: {0} (スーツ/警棒/懺悔 [{1}])", gearBuffOn ? "ON (OP)" : "OFF (Vanilla)", DebugGearBuffPatch.BuffedEquipmentCount),
+                gearBuffOn ? _goodStyle : _warnStyle,
+                EmptyOptions);
+            if (GUILayout.Button(gearBuffOn ? "[F8] Switch Gear to Vanilla" : "[F8] Switch Gear to Debug Buff", EmptyOptions))
+            {
+                DebugGearBuffPatch.ToggleBuff();
             }
             GUILayout.Space(2f);
 

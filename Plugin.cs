@@ -17,7 +17,7 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.4.0";
+        public const string PLUGIN_VERSION = "0.5.0";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
@@ -27,6 +27,9 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> EnableSpineAtlasCache;
         public static ConfigEntry<bool> EnableCursorLeakFix;
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
+        public static ConfigEntry<bool> EnableWorkerListCache;
+        public static ConfigEntry<bool> EnableSpineOptimizerCache;
+        public static ConfigEntry<bool> EnableDebugStarterGearBuff;
         public static ConfigEntry<bool> EnableNoticeCopyOnWrite;
         public static ConfigEntry<bool> EnableZeroBarrierOptimization;
         public static ConfigEntry<bool> EnableWorkerSpriteCache;
@@ -48,6 +51,8 @@ namespace LobotomyModernEngine
             EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止");
             EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止");
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止");
+            EnableWorkerListCache = Config.Bind("Optimization", "WorkerListCache", true, "AgentManager/OfficerManager の ReadOnlyCollection 毎フレーム生成をゼロアロケーション化");
+            EnableSpineOptimizerCache = Config.Bind("Optimization", "SpineOptimizerCache", true, "SpineOptimizerModule/WorkerUnit の毎フレーム Camera.main タグ検索を1フレーム1回に共有化");
             EnableNoticeCopyOnWrite = Config.Bind("Optimization", "NoticeCopyOnWrite", true, "Notice.Send の Copy-on-Write ゼロアロケーション化");
             EnableZeroBarrierOptimization = Config.Bind("Optimization", "ZeroBarrierOptimization", true, "TakeDamage のバリア0件時アロケーション消去 (Transpiler)");
             EnableWorkerSpriteCache = Config.Bind("Optimization", "WorkerSpriteCache", true, "WorkerSpriteSetter の GetComponent キャッシュ化");
@@ -55,6 +60,7 @@ namespace LobotomyModernEngine
             EnableSefiraPanelOptimization = Config.Bind("Optimization", "SefiraPanelOptimization", true, "SefiraPanel の NoData/Portrait キャッシュ化");
             EnablePassableOptimization = Config.Bind("Optimization", "PassableOptimization", true, "CheckPassable の走査最適化");
             MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4, 初回タスク投入時に遅延起動)");
+            EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", true, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)を強化する (F8またはF9画面で即切替可)");
             EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", false, "定期的にFPS・メモリ・GC情報をログ出力する");
 
             // LMF.Core 基盤コンポーネントの初期化
@@ -91,6 +97,25 @@ namespace LobotomyModernEngine
 
                 if (EnableWorkerPortraitOptimization.Value)
                     ApplyAndVerifyPatch(typeof(WorkerPortraitPatch), "WorkerPortraitSetter (LateUpdate Dirty Check)");
+
+                // v0.5.0 リストReadOnlyラッパーキャッシュ & カメラ最適化 & デバッグ装備強化
+                if (EnableWorkerListCache.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(WorkerListCachePatch.AgentManager_GetAgentList_Patch), "WorkerListCache (AgentList ReadOnly Cache)");
+                    ApplyAndVerifyPatch(typeof(WorkerListCachePatch.AgentManager_GetAgentSpareList_Patch), "WorkerListCache (AgentSpareList ReadOnly Cache)");
+                    ApplyAndVerifyPatch(typeof(WorkerListCachePatch.OfficerManager_GetOfficerList_Patch), "WorkerListCache (OfficerList ReadOnly Cache)");
+                }
+
+                if (EnableSpineOptimizerCache.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(SpineOptimizerPatch.SpineOptimizerModule_Update_Patch), "SpineOptimizerCache (Creature Camera Snapshot)");
+                    ApplyAndVerifyPatch(typeof(SpineOptimizerPatch.WorkerUnit_UpdateCheckInCamera_Patch), "SpineOptimizerCache (WorkerUnit Camera Check)");
+                    ApplyAndVerifyPatch(typeof(SpineOptimizerPatch.AgentUnit_UpdateAnimationQuality_Patch), "SpineOptimizerCache (AgentUnit Quality)");
+                    ApplyAndVerifyPatch(typeof(SpineOptimizerPatch.OfficerUnit_UpdateAnimationQuality_Patch), "SpineOptimizerCache (OfficerUnit Quality)");
+                }
+
+                // デバッグ初期装備強化（ゲーム中にもON/OFF切替できるよう常時フックし、Config値に従って適用/復元）
+                ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentDataLoader_Load_Patch), "DebugGearBuff (Starter & Penitence Gear Hook)");
                 
                 // セーブデータガード
                 ApplyAndVerifyPatch(typeof(MissingDataGuardPatch.InventoryModel_CreateEquipment_Patch), "MissingDataGuard (Equipment Skip)");
@@ -137,10 +162,15 @@ namespace LobotomyModernEngine
             IsolateRoomPatch.ClearCache();
             SefiraPanelPatch.ClearCache();
             WorkerPortraitPatch.ClearCache();
+            WorkerListCachePatch.ClearCache();
+            SpineOptimizerPatch.ClearCache();
             NoticePatch.ClearCache();
             SpineAtlasCachePatch.PruneDeadReferences();
             MainThreadDispatcher.Clear();
             FrameBudgetScheduler.Clear();
+
+            // 既にEquipmentTypeListがロード済みならデバッグ装備状態をConfigに同期
+            DebugGearBuffPatch.SyncWithConfig();
 
             Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, cleaned caches.", scene.name, nextGen));
         }
@@ -191,6 +221,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.4.0";
+        public const string PLUGIN_VERSION = "0.5.0";
     }
 }
