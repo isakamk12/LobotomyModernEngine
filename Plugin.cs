@@ -17,7 +17,7 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.6.0";
+        public const string PLUGIN_VERSION = "0.7.0";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
@@ -27,6 +27,16 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> EnableUITextReadabilityFix;
         public static ConfigEntry<float> UITextScaleMultiplier;
         public static ConfigEntry<int> UITextMinFontSize;
+        public static ConfigEntry<bool> EnableVanillaBugFixes;
+        public static ConfigEntry<bool> FixTwilightArmorGlobalBuff;
+        public static ConfigEntry<bool> FixChesedBulletRefiningResearch;
+        public static ConfigEntry<bool> FixMalkuthBossMovementReward;
+        public static ConfigEntry<bool> FixSlimeGirlBugs;
+        public static ConfigEntry<bool> FixLadyLookingAtWallWeapon;
+        public static ConfigEntry<bool> FixDangoWeaponKillBuff;
+        public static ConfigEntry<bool> FixBlueStarArmorHeal;
+        public static ConfigEntry<bool> FixBigBirdOverloadImmunity;
+        public static ConfigEntry<bool> FixRedHoodWeaponRange;
         public static ConfigEntry<bool> EnableSpineAtlasCache;
         public static ConfigEntry<bool> EnableCursorLeakFix;
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
@@ -54,6 +64,16 @@ namespace LobotomyModernEngine
             EnableUITextReadabilityFix = Config.Bind("UIReadability", "EnableUITextReadabilityFix", true, "エンサイクロペディア・ギフト・装備詳細・ローディング画面のフォントサイズ拡大＆文字切れ修正を有効化する");
             UITextScaleMultiplier = Config.Bind("UIReadability", "UITextScaleMultiplier", 1.25f, "UIテキストの拡大倍率 (推奨: 1.20 ~ 1.35)");
             UITextMinFontSize = Config.Bind("UIReadability", "UITextMinFontSize", 18, "UIテキストの最小フォントサイズ下限 (推奨: 18 ~ 20)");
+            EnableVanillaBugFixes = Config.Bind("VanillaBugFix", "EnableVanillaBugFixes", true, "バニラ固有バグ修正パッチ群を一括で有効化する");
+            FixTwilightArmorGlobalBuff = Config.Bind("VanillaBugFix", "FixTwilightArmorGlobalBuff", true, "いつでもどこでも黄昏バグ修正 (黄昏防具が他武器の攻撃力まで最大2倍にしていたバグ＆UnitModelのnullチェックバグ修正)");
+            FixChesedBulletRefiningResearch = Config.Bind("VanillaBugFix", "FixChesedBulletRefiningResearch", true, "プラシーボ効果バグ修正 (ケセド研究「HP、SP弾精製」ID:803を取得しても弾丸回復量が25→40に増えないバグ修正)");
+            FixMalkuthBossMovementReward = Config.Bind("VanillaBugFix", "FixMalkuthBossMovementReward", true, "マルクトあげませんバグ修正 (マルクトコア抑制クリア報酬「職員の移動速度が増加」が未実装だったバグ修正)");
+            FixSlimeGirlBugs = Config.Bind("VanillaBugFix", "FixSlimeGirlBugs", true, "溶ける愛ヤンデレ・ツンデレバグ修正 (洞察失敗時に感染者が変異しないバグ＆カウンター減少条件が施設全体分母になっていたバグ修正)");
+            FixLadyLookingAtWallWeapon = Config.Bind("VanillaBugFix", "FixLadyLookingAtWallWeapon", true, "壁に向かう女武器「叫び」バグ修正 (説明文通り「勇気または慎重ランク3未満で50%の確率でSP5減少」に修正)");
+            FixDangoWeaponKillBuff = Config.Bind("VanillaBugFix", "FixDangoWeaponKillBuff", true, "笑顔(団子)特殊攻撃キルバフ不発バグ修正 (特殊6連撃の2〜6撃目で敵を倒した際にも体力+3・正義+3バフが付与されるよう修正)");
+            FixBlueStarArmorHeal = Config.Bind("VanillaBugFix", "FixBlueStarArmorHeal", true, "一等星は常に嘘つきバグ修正 (蒼星防具の同空間回復で精神力だけでなく体力も5回復するよう修正)");
+            FixBigBirdOverloadImmunity = Config.Bind("VanillaBugFix", "FixBigBirdOverloadImmunity", true, "効かないねぇ！大鳥だから！バグ修正 (大鳥がmaxWorkCount=0のためクリフォト暴走の対象外になっていたバグ修正)");
+            FixRedHoodWeaponRange = Config.Bind("VanillaBugFix", "FixRedHoodWeaponRange", true, "紅の傷跡短小バグ＆インベントリ射程表記ズレ修正 (通常攻撃時に射程が4→3に縮むバグとインベントリ射程閾値バグ修正)");
             EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止");
             EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止");
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止");
@@ -161,6 +181,62 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.LocalizeTextLoadScript_SetText_Patch), "UITextReadability (LocalizeTextLoadScript MinSize Floor)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.OverlayManager_SetText_Patch), "UITextReadability (OverlayManager Tooltip)");
                 }
+
+                // v0.7.0 バニラ固有バグ修正パッチ群 (note記事準拠・全9項目個別トグル対応)
+                if (EnableVanillaBugFixes.Value)
+                {
+                    int activeGroups = 0;
+                    if (FixTwilightArmorGlobalBuff.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.UnitModel_GetDamageFactorByEquipment_Patch), "VanillaBugFix (UnitModel Armor NullCheck)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BossBirdArmor_GetDamageFactor_Patch), "VanillaBugFix (Twilight Armor Weapon Check)");
+                        activeGroups++;
+                    }
+                    if (FixChesedBulletRefiningResearch.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.ResearchDataModel_IsUpgradedAbility_Patch), "VanillaBugFix (Chesed Bullet Refining ID:803)");
+                        activeGroups++;
+                    }
+                    if (FixMalkuthBossMovementReward.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.AgentModel_GetMovementBufBySefiraAbility_Patch), "VanillaBugFix (Malkuth Boss Movement Reward)");
+                        activeGroups++;
+                    }
+                    if (FixSlimeGirlBugs.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.SlimeGirl_OnReleaseWork_Patch), "VanillaBugFix (SlimeGirl Yandere Pawn Transform)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.SlimeGirl_OnFixedUpdate_Patch), "VanillaBugFix (SlimeGirl Tsundere Dept Ratio)");
+                        activeGroups++;
+                    }
+                    if (FixLadyLookingAtWallWeapon.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.LadyLookingAtWallWeapon_OnGiveDamage_Patch), "VanillaBugFix (LadyLookingAtWall Weapon SP Penalty)");
+                        activeGroups++;
+                    }
+                    if (FixDangoWeaponKillBuff.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DangoCreatureWeapon_OnGiveDamage_Patch), "VanillaBugFix (Dango Weapon AliveBeforeHit)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DangoCreatureWeapon_OnGiveDamageAfter_Patch), "VanillaBugFix (Dango Weapon MultiHit Kill Buff)");
+                        activeGroups++;
+                    }
+                    if (FixBlueStarArmorHeal.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BlueStarArmor_MpHeal_Patch), "VanillaBugFix (BlueStar Armor HP+SP Heal)");
+                        activeGroups++;
+                    }
+                    if (FixBigBirdOverloadImmunity.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.CreatureModel_GetMaxWorkCount_Patch), "VanillaBugFix (BigBird Overload Eligibility)");
+                        activeGroups++;
+                    }
+                    if (FixRedHoodWeaponRange.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.RedHoodWeapon_SetNextAttackType_Patch), "VanillaBugFix (RedHood Weapon Normal Range 4f)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.InventoryItemDescGetter_GetWeaponDesc_Patch), "VanillaBugFix (Inventory Weapon Range Threshold)");
+                        activeGroups++;
+                    }
+                    VanillaBugFixPatch.ActiveBugFixGroupCount = activeGroups;
+                }
                 
                 // セーブデータガード
                 ApplyAndVerifyPatch(typeof(MissingDataGuardPatch.InventoryModel_CreateEquipment_Patch), "MissingDataGuard (Equipment Skip)");
@@ -211,6 +287,7 @@ namespace LobotomyModernEngine
             SpineOptimizerPatch.ClearCache();
             NoticePatch.ClearCache();
             UITextReadabilityPatch.ClearCache();
+            VanillaBugFixPatch.ClearCache();
             SpineAtlasCachePatch.PruneDeadReferences();
             MainThreadDispatcher.Clear();
             FrameBudgetScheduler.Clear();
@@ -267,6 +344,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.6.0";
+        public const string PLUGIN_VERSION = "0.7.0";
     }
 }

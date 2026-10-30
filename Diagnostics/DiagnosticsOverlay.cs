@@ -137,14 +137,14 @@ namespace LobotomyModernEngine.Diagnostics
             InitStyles();
 
             float width = 395f;
-            float height = 480f;
+            float height = 500f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
 
             GUILayout.BeginArea(new Rect(18f, 10f, width - 16f, height - 10f));
             
-            GUILayout.Label("Lobotomy Modern Engine v0.6.0 (F9:UI / F8:Gear)", _headerStyle, EmptyOptions);
+            GUILayout.Label("Lobotomy Modern Engine v0.7.0 (F9:UI / F8:Gear)", _headerStyle, EmptyOptions);
             GUILayout.Space(1f);
 
             // FPS & フレーム時間
@@ -159,12 +159,13 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Space(2f);
 
             // 実行時最適化 & メモリリーク防止メトリクス
-            GUILayout.Label("Memory Leak & Hotpath Metrics:", _headerStyle, EmptyOptions);
+            GUILayout.Label("Memory Leak, UI & BugFix Metrics:", _headerStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Spine PMA Cache: {0} hits / {1} cached (Leak Cut)", SpineAtlasCachePatch.CacheHitCount, SpineAtlasCachePatch.CachedRegionCount), _goodStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Cursor Leak Cut: {0} avoided ({1} cached)", CursorLeakPatch.AvoidedCursorTexAllocations, CursorLeakPatch.CachedCursorTextureCount), _goodStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Portrait Skip:   {0} LateUpdates skipped", WorkerPortraitPatch.AvoidedPortraitRebuilds), _labelStyle, EmptyOptions);
             GUILayout.Label(string.Format("• List/Cam Cache:  {0} List / {1} Cam saved", WorkerListCachePatch.AvoidedReadOnlyAllocations, SpineOptimizerPatch.AvoidedCameraLookups), _labelStyle, EmptyOptions);
             GUILayout.Label(string.Format("• UI Text Fix:     {0} texts enhanced (x{1:F2}, min:{2})", UITextReadabilityPatch.EnhancedTextCount, Plugin.UITextScaleMultiplier != null ? Plugin.UITextScaleMultiplier.Value : 1.25f, Plugin.UITextMinFontSize != null ? Plugin.UITextMinFontSize.Value : 18), _goodStyle, EmptyOptions);
+            GUILayout.Label(string.Format("• Vanilla BugFix:  {0}/9 groups active ({1} triggered)", VanillaBugFixPatch.ActiveBugFixGroupCount, VanillaBugFixPatch.TotalTriggeredFixes), _goodStyle, EmptyOptions);
             GUILayout.Label(string.Format("• Notice.Send:     {0}/s (Avoided Alloc: {1})", _displayNoticePerSec, NoticePatch.AvoidedAllocations), _labelStyle, EmptyOptions);
             GUILayout.Label(string.Format("• TakeDamage:      {0}/s (0-Barrier Cut: {1})", _displayDamagePerSec, TakeDamagePatch.ZeroBarrierAllocAvoided), _labelStyle, EmptyOptions);
             if (!string.IsNullOrEmpty(MetricsPatches.LastLoadedSceneName))
