@@ -34,6 +34,10 @@
       <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.AnimationModule">
       <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
       <Private>false</Private>

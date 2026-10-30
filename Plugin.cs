@@ -17,7 +17,7 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.0";
+        public const string PLUGIN_VERSION = "0.7.1";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
@@ -25,8 +25,7 @@ namespace LobotomyModernEngine
         // Config 設定（全パッチを個別にON/OFF・切り戻し可能）
         public static ConfigEntry<bool> EnableEngineOverhaul;
         public static ConfigEntry<bool> EnableUITextReadabilityFix;
-        public static ConfigEntry<float> UITextScaleMultiplier;
-        public static ConfigEntry<int> UITextMinFontSize;
+        public static ConfigEntry<bool> EnableCheapStatUpgrade;
         public static ConfigEntry<bool> EnableVanillaBugFixes;
         public static ConfigEntry<bool> FixTwilightArmorGlobalBuff;
         public static ConfigEntry<bool> FixChesedBulletRefiningResearch;
@@ -61,9 +60,8 @@ namespace LobotomyModernEngine
 
             // 設定の初期化
             EnableEngineOverhaul = Config.Bind("General", "EnableEngineOverhaul", true, "全般的な最適化パッチを有効化する");
-            EnableUITextReadabilityFix = Config.Bind("UIReadability", "EnableUITextReadabilityFix", true, "エンサイクロペディア・ギフト・装備詳細・ローディング画面のフォントサイズ拡大＆文字切れ修正を有効化する");
-            UITextScaleMultiplier = Config.Bind("UIReadability", "UITextScaleMultiplier", 1.25f, "UIテキストの拡大倍率 (推奨: 1.20 ~ 1.35)");
-            UITextMinFontSize = Config.Bind("UIReadability", "UITextMinFontSize", 18, "UIテキストの最小フォントサイズ下限 (推奨: 18 ~ 20)");
+            EnableUITextReadabilityFix = Config.Bind("UIReadability", "EnableUITextReadabilityFix", true, "エンサイクロペディア・ギフト・ローディング画面のフォントサイズ適正化＆文字切れ修正を有効化する");
+            EnableCheapStatUpgrade = Config.Bind("Debug", "CheapStatUpgrade", true, "デバッグ・レベリング短縮用に職員のステータス強化に必要なLOBポイントを一律1にする");
             EnableVanillaBugFixes = Config.Bind("VanillaBugFix", "EnableVanillaBugFixes", true, "バニラ固有バグ修正パッチ群を一括で有効化する");
             FixTwilightArmorGlobalBuff = Config.Bind("VanillaBugFix", "FixTwilightArmorGlobalBuff", true, "いつでもどこでも黄昏バグ修正 (黄昏防具が他武器の攻撃力まで最大2倍にしていたバグ＆UnitModelのnullチェックバグ修正)");
             FixChesedBulletRefiningResearch = Config.Bind("VanillaBugFix", "FixChesedBulletRefiningResearch", true, "プラシーボ効果バグ修正 (ケセド研究「HP、SP弾精製」ID:803を取得しても弾丸回復量が25→40に増えないバグ修正)");
@@ -143,43 +141,24 @@ namespace LobotomyModernEngine
                 // デバッグ初期装備強化（ゲーム中にもON/OFF切替できるよう常時フックし、Config値に従って適用/復元）
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentDataLoader_Load_Patch), "DebugGearBuff (Starter & Penitence Gear Hook)");
 
-                // v0.6.0 UIテキストサイズ・エンサイクロペディア・ギフト・ローディング文字切れ包括修正パッチ
+                // デバッグ強化LOBポイント一律1パッチ
+                if (EnableCheapStatUpgrade.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init_Patch), "DebugStatCost (StatUI Cost Array Hook)");
+                    ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatController_SetCost_Patch), "DebugStatCost (StatController SetCost Hook)");
+                }
+
+                // UIテキストサイズ・エンサイクロペディア・ギフト・ローディング文字切れピンポイント修正パッチ
                 if (EnableUITextReadabilityFix.Value)
                 {
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWindow_SetDesc_Patch), "UITextReadability (Encyclopedia Story SetDesc)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_TypeInfo_Patch), "UITextReadability (Encyclopedia GiftSlot TypeInfo)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_Model_Patch), "UITextReadability (Encyclopedia GiftSlot Model)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetProb_Patch), "UITextReadability (Encyclopedia GiftSlot Prob)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.WeaponSlot_SetModel_TypeInfo_Patch), "UITextReadability (Encyclopedia WeaponSlot TypeInfo)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.WeaponSlot_SetModel_Model_Patch), "UITextReadability (Encyclopedia WeaponSlot Model)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.ArmorSlot_SetModel_TypeInfo_Patch), "UITextReadability (Encyclopedia ArmorSlot TypeInfo)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.ArmorSlot_SetModel_Model_Patch), "UITextReadability (Encyclopedia ArmorSlot Model)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.EquipSlot_CheckBlocked_Patch), "UITextReadability (Encyclopedia EquipSlot CheckBlocked)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.EquipSlot_NoData_Patch), "UITextReadability (Encyclopedia EquipSlot NoData)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoCaretakingSlot_SetData_Patch), "UITextReadability (Encyclopedia CaretakingSlot)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoObserveLevelEffectSlot_SetText_Patch), "UITextReadability (Encyclopedia ObserveBonusSlot)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoStatRoot_Initialize0_Patch), "UITextReadability (Encyclopedia StatRoot Init0)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoStatRoot_Initialize1_Patch), "UITextReadability (Encyclopedia StatRoot Init1)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWorkSlot_SetRWBPType_Patch), "UITextReadability (Encyclopedia WorkSlot Type)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWorkSlot_Initialize0_Patch), "UITextReadability (Encyclopedia WorkSlot Init0)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWorkSlot_Initialize1_Patch), "UITextReadability (Encyclopedia WorkSlot Init1)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoCodex_OnOeverlayEnter_Patch), "UITextReadability (Encyclopedia Codex Overlay)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoCodexSlot_Init_Patch), "UITextReadability (Encyclopedia CodexSlot)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoKitLayoutController_MakeEmptySlot_Patch), "UITextReadability (Encyclopedia KitSlot)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentInfoWindow_InitGiftArea_Patch), "UITextReadability (AgentInfoWindow Gift List)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentGiftSlot_SetData_Patch), "UITextReadability (InGameUI AgentGiftSlot Data)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentGiftSlot_SetRegionName_Patch), "UITextReadability (InGameUI AgentGiftSlot Region)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.InventoryAgentController_SetUI_Patch), "UITextReadability (Inventory Agent Gift List)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.InventoryItemController_OnClickDetailInfo_TypeInfo_Patch), "UITextReadability (Inventory Detail Tooltip TypeInfo)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.InventoryItemController_OnClickDetailInfo_Model_Patch), "UITextReadability (Inventory Detail Tooltip Model)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.InventoryWeaponSlot_UpdateUI_Patch), "UITextReadability (Inventory WeaponSlot)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.InventoryArmorSlot_UpdateUI_Patch), "UITextReadability (Inventory ArmorSlot)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.ContinueLoadingScene_OnEnable_Patch), "UITextReadability (ContinueLoadingScene Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.TitleEndScene_OnEnable_Patch), "UITextReadability (TitleEndScene Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.StoryEndScene_OnEnable_Patch), "UITextReadability (StoryEndScene Overflow)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.DayEndScene_OnEnable_Patch), "UITextReadability (DayEndScene Overflow)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.LocalizeTextLoadScript_SetText_Patch), "UITextReadability (LocalizeTextLoadScript MinSize Floor)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.OverlayManager_SetText_Patch), "UITextReadability (OverlayManager Tooltip)");
                 }
 
                 // v0.7.0 バニラ固有バグ修正パッチ群 (note記事準拠・全9項目個別トグル対応)
@@ -344,6 +323,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.0";
+        public const string PLUGIN_VERSION = "0.7.1";
     }
 }

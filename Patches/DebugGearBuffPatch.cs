@@ -127,39 +127,36 @@ namespace LobotomyModernEngine.Patches
                 // Lv1職員でも即装備できるように装着条件をクリアし、Gradeは5(ALEPH相当のランク補正)へ引き上げ
                 info.requires.Clear();
                 info.grade = "5";
-                if (info.maxNum < 5)
+                if (info.maxNum < 20)
                 {
-                    info.maxNum = 5;
+                    info.maxNum = 20;
                 }
 
                 if (info.type == EquipmentTypeInfo.EquipmentType.WEAPON)
                 {
-                    // 警棒(ID:1) および 懺悔武器(OneBadManyGoodWeapon): 高火力・高速・中距離化で鎮圧テストを高速化
+                    // 警棒(ID:1) および 懺悔武器(OneBadManyGoodWeapon): 超高火力・超高速・遠距離化で即座に鎮圧完了
                     if (info.damageInfos != null)
                     {
                         for (int i = 0; i < info.damageInfos.Length; i++)
                         {
-                            info.damageInfos[i].min = 45f;
-                            info.damageInfos[i].max = 65f;
+                            info.damageInfos[i].min = 500f;
+                            info.damageInfos[i].max = 999f;
                         }
                     }
-                    if (info.range < 6f)
-                    {
-                        info.range = 6f;
-                    }
-                    info.attackSpeed = 2.0f;
+                    info.range = 15f;
+                    info.attackSpeed = 0.4f;
                     count++;
                     itemSummary.Add(string.Format("Weapon#{0}({1})", info.id, string.IsNullOrEmpty(info.script) ? "Default" : info.script));
                 }
                 else if (info.type == EquipmentTypeInfo.EquipmentType.ARMOR)
                 {
-                    // スーツ(ID:22) および 懺悔防具(OneBadManyGoodArmor): 全属性 0.1倍 (90%軽減) で作業・鎮圧中の即死やパニックを防止
+                    // スーツ(ID:22) および 懺悔防具(OneBadManyGoodArmor): 全属性 0.01倍 (99%軽減) で作業・鎮圧中の即死やパニックを完全防止
                     if (info.defenseInfo != null)
                     {
-                        info.defenseInfo.R = 0.1f;
-                        info.defenseInfo.W = 0.1f;
-                        info.defenseInfo.B = 0.1f;
-                        info.defenseInfo.P = 0.1f;
+                        info.defenseInfo.R = 0.01f;
+                        info.defenseInfo.W = 0.01f;
+                        info.defenseInfo.B = 0.01f;
+                        info.defenseInfo.P = 0.01f;
                     }
                     count++;
                     itemSummary.Add(string.Format("Armor#{0}({1})", info.id, string.IsNullOrEmpty(info.script) ? "Default" : info.script));
