@@ -49,6 +49,12 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> FixVoidDreamWakeUpFreeze;
         public static ConfigEntry<bool> FixMultiHitWeaponDamage;
         public static ConfigEntry<bool> FixAttackCancelHitboxMismatch;
+        public static ConfigEntry<bool> FixBinahInvincibilityFreeze;
+        public static ConfigEntry<bool> FixBigBirdCharmedDamageImmunity;
+        public static ConfigEntry<bool> FixReverseClockZombieState;
+        public static ConfigEntry<bool> FixDoorPassingStuck;
+        public static ConfigEntry<bool> FixRedHoodRiskLevelSync;
+        public static ConfigEntry<bool> FixWhiteNightRoomSwapSmallBird;
         public static ConfigEntry<bool> EnableSpineAtlasCache;
         public static ConfigEntry<bool> EnableCursorLeakFix;
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
@@ -99,6 +105,12 @@ namespace LobotomyModernEngine
             FixVoidDreamWakeUpFreeze = Config.Bind("VanillaBugFix", "FixVoidDreamWakeUpFreeze", true, "空虚な夢(夢喰い獏)覚醒スタックバグ修正 (職員覚醒時にキュー不整合やイベント欠落で永久操作不能・無敵化するバグの安全救出機構)");
             FixMultiHitWeaponDamage = Config.Bind("VanillaBugFix", "FixMultiHitWeaponDamage", true, "多段演出単発ダメージバグ修正 (宇宙の欠片等で多段ヒット演出なのにダメージが1回しか入らない不整合を適正分割化)");
             FixAttackCancelHitboxMismatch = Config.Bind("VanillaBugFix", "FixAttackCancelHitboxMismatch", true, "攻撃キャンセル判定残留バグ修正 (移動やターゲット喪失時にSpineアニメ中断と残存ダメージキュー破棄を徹底しゴースト判定を防止)");
+            FixBinahInvincibilityFreeze = Config.Bind("VanillaBugFix", "FixBinahInvincibilityFreeze", true, "調律者停止・無敵化バグ修正 (49日目やフェーズ移行・ロード後に無敵フラグが解除されず進行不能になるバグの自動復帰・Watchdog)");
+            FixBigBirdCharmedDamageImmunity = Config.Bind("VanillaBugFix", "FixBigBirdCharmedDamageImmunity", true, "大鳥魅了職員無敵化バグ修正 (大鳥の魅了第2・第3段階でダメージ倍率が0になり味方の鎮圧・救出が不能になるバグ修正)");
+            FixReverseClockZombieState = Config.Bind("VanillaBugFix", "FixReverseClockZombieState", true, "逆行時計琥珀ゾンビ化バグ修正 (逆行時計発動時に試練エネミーのHPや死亡処理がスキップされ攻撃を続ける無敵ゾンビ化バグ修正)");
+            FixDoorPassingStuck = Config.Bind("VanillaBugFix", "FixDoorPassingStuck", true, "扉付近滑走スタックバグ修正 (閉じた扉の前で移動状態のまま座標が進まず走行アニメーションで固まるバグの安全脱出機構)");
+            FixRedHoodRiskLevelSync = Config.Bind("VanillaBugFix", "FixRedHoodRiskLevelSync", true, "赤ずきん危険度・コスト表示不一致修正 (依頼UIの危険度表示と内部コスト計算の不整合、試練・職員指定時の表示残存バグ修正)");
+            FixWhiteNightRoomSwapSmallBird = Config.Bind("VanillaBugFix", "FixWhiteNightRoomSwapSmallBird", true, "白夜部屋交換・罰鳥止まり木残留バグ修正 (ペスト医師→白夜変身で部屋が入れ替わった際に罰鳥の止まり木が元の部屋に取り残されるバグ修正)");
             EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (表示状態Dirty検知＆所要時間計測)");
@@ -283,6 +295,38 @@ namespace LobotomyModernEngine
                         ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.AttackCancelHitboxMismatch_Patch), "VanillaBugFix (Attack Cancel Hitbox Flush)");
                         activeGroups++;
                     }
+                    if (FixBinahInvincibilityFreeze.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BinahMoveToNextPhase_Patch), "VanillaBugFix (Binah MoveToNextPhase Invincible Reset)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BinahWatchdog_Patch), "VanillaBugFix (Binah Invincible Watchdog)");
+                        activeGroups++;
+                    }
+                    if (FixBigBirdCharmedDamageImmunity.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BigBirdAttractBuf_OnTakeDamage_Patch), "VanillaBugFix (BigBird Attract Friendly Damage Factor)");
+                        activeGroups++;
+                    }
+                    if (FixReverseClockZombieState.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.ReverseClock_Retrograde_Patch), "VanillaBugFix (ReverseClock Ordeal Zombie Elimination)");
+                        activeGroups++;
+                    }
+                    if (FixDoorPassingStuck.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DoorPassingStuck_Patch), "VanillaBugFix (Door Passing Stuck Auto-Recovery)");
+                        activeGroups++;
+                    }
+                    if (FixRedHoodRiskLevelSync.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.RedHoodRequestUI_Update_Patch), "VanillaBugFix (RedHood UI Risk & Cost Sync)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.RedHood_GetRequestCost_Patch), "VanillaBugFix (RedHood Request Cost Normalized)");
+                        activeGroups++;
+                    }
+                    if (FixWhiteNightRoomSwapSmallBird.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.CreatureManager_ChangeCreaturePos_Patch), "VanillaBugFix (WhiteNight Room Swap SmallBird Perch Sync)");
+                        activeGroups++;
+                    }
                     VanillaBugFixPatch.ActiveBugFixGroupCount = activeGroups;
                 }
                 
@@ -419,6 +463,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.7";
+        public const string PLUGIN_VERSION = "0.7.8";
     }
 }

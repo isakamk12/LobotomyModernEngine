@@ -62,6 +62,24 @@ namespace LobotomyModernEngine.Patches
         private static readonly FieldInfo _redHoodSpecialInfoField
             = AccessTools.Field(typeof(RedHoodWeapon), "specialInfo");
 
+        private static readonly FieldInfo _smallBirdPerchObjectField
+            = AccessTools.Field(typeof(SmallBirdAnim), "perchObject");
+
+        private static readonly FieldInfo _smallBirdPerchPositionField
+            = AccessTools.Field(typeof(SmallBirdAnim), "perchPosition");
+
+        private static readonly FieldInfo _binahIsHaltedField
+            = AccessTools.Field(typeof(BinahCoreScript), "_isHalted");
+
+        private static readonly FieldInfo _binahRecoverTimerField
+            = AccessTools.Field(typeof(BinahCoreScript), "_recoverTimer");
+
+        private static readonly FieldInfo _movablePathInfoField
+            = AccessTools.Field(typeof(MovableObjectNode), "pathInfo");
+
+        private static readonly FieldInfo _movablePathIndexField
+            = AccessTools.Field(typeof(MovableObjectNode), "pathIndex");
+
         public static void ClearCache()
         {
             _dangoTargetAliveBeforeHit.Clear();
@@ -1048,6 +1066,342 @@ namespace LobotomyModernEngine.Patches
                     {
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// ① 調律者の停止・無敵化（特に49日目／ロード後）修正
+        /// フェーズ移行時に無敵フラグが解除されないバグと、非暴走時に無敵のまま凍結するバグを安全に解除するWatchdog。
+        /// </summary>
+        [HarmonyPatch(typeof(BinahCoreScript), "MoveToNextPhase")]
+        public static class BinahMoveToNextPhase_Patch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(BinahCoreScript __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixBinahInvincibilityFreeze == null || !Plugin.FixBinahInvincibilityFreeze.Value ||
+                    __instance == null)
+                    return;
+
+                if (__instance.IsInvincible)
+                {
+                    __instance.IsInvincible = false;
+                    TotalTriggeredFixes++;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(BinahCoreScript), "OnFixedUpdate")]
+        public static class BinahWatchdog_Patch
+        {
+            private static int _frozenTicks = 0;
+
+            [HarmonyPostfix]
+            public static void Postfix(BinahCoreScript __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixBinahInvincibilityFreeze == null || !Plugin.FixBinahInvincibilityFreeze.Value ||
+                    __instance == null)
+                    return;
+
+                bool isHalted = false;
+                if (_binahIsHaltedField != null)
+                {
+                    try { isHalted = (bool)_binahIsHaltedField.GetValue(__instance); } catch (Exception) { }
+                }
+
+                if (!isHalted && __instance.IsInvincible)
+                {
+                    // 暴走中かどうか (HasOverload)
+                    if (!__instance.HasOverload())
+                    {
+                        _frozenTicks++;
+                        if (_frozenTicks > 150) // 50Hzで約3秒以上無敵フラグが放置された場合
+                        {
+                            __instance.IsInvincible = false;
+                            _frozenTicks = 0;
+                            TotalTriggeredFixes++;
+                        }
+                    }
+                    else
+                    {
+                        _frozenTicks = 0;
+                    }
+                }
+                else
+                {
+                    _frozenTicks = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// ② 大鳥の魅了対象が無敵化するバグ修正
+        /// BigBirdAttractBufのPhase 2/3でダメージ倍率が0fになり味方の鎮圧・救出が不能になるのを解除し、
+        /// 味方職員による鎮圧攻撃のダメージが正常に通るようにする。
+        /// </summary>
+        [HarmonyPatch(typeof(BigBirdAttractBuf), "OnTakeDamage")]
+        public static class BigBirdAttractBuf_OnTakeDamage_Patch
+        {
+            [HarmonyPrefix]
+            public static bool Prefix(BigBirdAttractBuf __instance, UnitModel attacker, ref float __result)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixBigBirdCharmedDamageImmunity == null || !Plugin.FixBigBirdCharmedDamageImmunity.Value ||
+                    __instance == null)
+                    return true;
+
+                if (attacker is WorkerModel)
+                {
+                    if (__instance.phase == BigBirdAttractBuf.Phase.SECOND || __instance.phase == BigBirdAttractBuf.Phase.THIRD)
+                    {
+                        __result = 1.0f;
+                        TotalTriggeredFixes++;
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// ③ 逆行時計と琥珀の黄昏のゾンビ状態修正
+        /// 逆行時計で鎮圧された試練エネミーがHP>0やOnFixedUpdate継続により無敵ゾンビ化するのを完全掃討・消滅させる。
+        /// </summary>
+        [HarmonyPatch(typeof(ReverseClock), "Retrograde")]
+        public static class ReverseClock_Retrograde_Patch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(ReverseClock __instance, bool b)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixReverseClockZombieState == null || !Plugin.FixReverseClockZombieState.Value ||
+                    !b)
+                    return;
+
+                try
+                {
+                    if (OrdealManager.instance != null)
+                    {
+                        var ordealList = OrdealManager.instance.GetOrdealCreatureList();
+                        if (ordealList != null)
+                        {
+                            foreach (var ordeal in ordealList)
+                            {
+                                if (ordeal == null) continue;
+                                if (ordeal.OrdealBase != null && ordeal.OrdealBase.level == OrdealLevel.MIDNIGHT)
+                                    continue; // 白夜(深夜)は除外仕様
+
+                                bool fixedTarget = false;
+                                if (ordeal.hp > 0f)
+                                {
+                                    ordeal.hp = 0f;
+                                    fixedTarget = true;
+                                }
+                                if (ordeal.state != CreatureState.SUPPRESSED)
+                                {
+                                    ordeal.Suppressed();
+                                    fixedTarget = true;
+                                }
+                                try
+                                {
+                                    ordeal.script?.OnAfterSuppressed();
+                                }
+                                catch (Exception) { }
+
+                                var unit = ordeal.Unit;
+                                if (unit != null && unit.gameObject != null && unit.gameObject.activeSelf)
+                                {
+                                    unit.gameObject.SetActive(false);
+                                    fixedTarget = true;
+                                }
+
+                                if (fixedTarget)
+                                    TotalTriggeredFixes++;
+                            }
+                        }
+                    }
+                }
+                catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// ④ 扉付近で走行・滑走状態のまま固まるバグ修正
+        /// 閉じた扉の前で進行不能なのにStopMovingが呼ばれず走行アニメーションで永久スタックするのを安全に解除する。
+        /// </summary>
+        [HarmonyPatch(typeof(MovableObjectNode), "ProcessMoveNode")]
+        public static class DoorPassingStuck_Patch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(MovableObjectNode __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixDoorPassingStuck == null || !Plugin.FixDoorPassingStuck.Value ||
+                    __instance == null)
+                    return;
+
+                if (__instance.GetState() != MovableState.MOVE)
+                    return;
+
+                if (__instance.currentNode == null || _movablePathInfoField == null || _movablePathIndexField == null)
+                    return;
+
+                try
+                {
+                    var pathInfo = _movablePathInfoField.GetValue(__instance) as PathResult;
+                    if (pathInfo == null || pathInfo.pathEdges == null)
+                        return;
+
+                    int pathIndex = (int)_movablePathIndexField.GetValue(__instance);
+                    if (pathIndex >= pathInfo.pathEdges.Length)
+                        return;
+
+                    MapEdge edge = pathInfo.pathEdges[pathIndex];
+                    if (edge == null) return;
+
+                    EdgeDirection dir = pathInfo.edgeDirections[pathIndex];
+                    MapNode goalNode = edge.GetGoalNode(dir);
+                    if (goalNode != null && goalNode.closed)
+                    {
+                        var door = goalNode.GetDoor();
+                        if (door != null)
+                        {
+                            var unitModel = __instance.GetUnit();
+                            if (unitModel != null && unitModel.CanOpenDoor())
+                            {
+                                door.TryOpen();
+                            }
+                            else
+                            {
+                                __instance.StopMoving();
+                                TotalTriggeredFixes++;
+                            }
+                        }
+                        else
+                        {
+                            __instance.StopMoving();
+                            TotalTriggeredFixes++;
+                        }
+                    }
+                }
+                catch (Exception) { }
+            }
+        }
+
+        /// <summary>
+        /// ⑤ 赤ずきんの表示ランクと内部値の不一致修正
+        /// 依頼コスト計算とUIの危険度表示を正規化し、職員・試練対象時も含めてUIと消費エネルギーを完全一致させる。
+        /// </summary>
+        [HarmonyPatch(typeof(RedHood), "GetRequestCost")]
+        public static class RedHood_GetRequestCost_Patch
+        {
+            [HarmonyPrefix]
+            public static bool Prefix(UnitModel unit, ref int __result)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixRedHoodRiskLevelSync == null || !Plugin.FixRedHoodRiskLevelSync.Value ||
+                    unit == null)
+                    return true;
+
+                if (unit is AgentModel agent)
+                {
+                    __result = Mathf.Clamp(agent.level, 1, 5) * 40;
+                    TotalTriggeredFixes++;
+                    return false;
+                }
+                if (unit is CreatureModel creature)
+                {
+                    int riskInt = 1;
+                    if (creature is OrdealCreatureModel ordeal && ordeal.OrdealBase != null)
+                    {
+                        riskInt = (int)ordeal.OrdealBase.level + 1;
+                    }
+                    else if (creature.metaInfo != null)
+                    {
+                        riskInt = (int)creature.metaInfo.GetRiskLevel() + 1;
+                    }
+                    __result = Mathf.Clamp(riskInt, 1, 5) * 40;
+                    TotalTriggeredFixes++;
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(RedHoodRequestUI), "Update")]
+        public static class RedHoodRequestUI_Update_Patch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(RedHoodRequestUI __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixRedHoodRiskLevelSync == null || !Plugin.FixRedHoodRiskLevelSync.Value ||
+                    __instance == null)
+                    return;
+
+                if (__instance.CurrentOverlayCreature != null)
+                {
+                    if (__instance.CurrentOverlayCreature is AgentModel agent)
+                    {
+                        __instance.cursorAttachedRiskLevel.enabled = true;
+                        __instance.cursorAttachedRiskLevel.text = "<color=#FFFFFFFF>LV " + agent.level + "</color>";
+                    }
+                    else if (__instance.CurrentOverlayCreature is OrdealCreatureModel ordeal && ordeal.OrdealBase != null)
+                    {
+                        __instance.cursorAttachedRiskLevel.enabled = true;
+                        RiskLevel risk = (RiskLevel)Mathf.Clamp((int)ordeal.OrdealBase.level, 0, 4);
+                        __instance.cursorAttachedRiskLevel.text = string.Format("<color=#{0}FF>{1}</color>",
+                            ColorUtility.ToHtmlStringRGB(UIColorManager.instance.GetRiskColor(risk)),
+                            risk.ToString().ToUpper());
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// ⑥ ペスト医師／白夜の部屋交換後に罰鳥分岐（止まり木 / Perch）が残るバグ修正
+        /// 収容室が入れ替わった際に罰鳥の止まり木を現在の収容室位置へ即座に再同期し、白夜の部屋に枝が置き去りにされるのを防ぐ。
+        /// </summary>
+        [HarmonyPatch(typeof(CreatureManager), "ChangeCreaturePos")]
+        public static class CreatureManager_ChangeCreaturePos_Patch
+        {
+            [HarmonyPostfix]
+            public static void Postfix(CreatureModel caller, CreatureModel changed)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixWhiteNightRoomSwapSmallBird == null || !Plugin.FixWhiteNightRoomSwapSmallBird.Value)
+                    return;
+
+                try
+                {
+                    if (CreatureManager.instance == null) return;
+                    var creatureList = CreatureManager.instance.GetCreatureList();
+                    if (creatureList == null) return;
+
+                    foreach (var c in creatureList)
+                    {
+                        if (c != null && c.script is SmallBird smallBird)
+                        {
+                            var unit = smallBird.Unit;
+                            if (unit != null && unit.animTarget is SmallBirdAnim anim)
+                            {
+                                if (_smallBirdPerchObjectField != null && _smallBirdPerchPositionField != null)
+                                {
+                                    var perchObj = _smallBirdPerchObjectField.GetValue(anim) as GameObject;
+                                    var perchPos = (Vector3)_smallBirdPerchPositionField.GetValue(anim);
+                                    if (perchObj != null && unit.transform.parent != null)
+                                    {
+                                        perchObj.transform.position = unit.transform.parent.position + perchPos;
+                                        TotalTriggeredFixes++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception) { }
             }
         }
     }
