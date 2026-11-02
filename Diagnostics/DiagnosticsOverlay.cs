@@ -144,7 +144,7 @@ namespace LobotomyModernEngine.Diagnostics
 
             GUILayout.BeginArea(new Rect(18f, 10f, width - 16f, height - 10f));
             
-            GUILayout.Label("Lobotomy Modern Engine v0.7.1 (F9:UI / F8:Gear)", _headerStyle, EmptyOptions);
+            GUILayout.Label(string.Format("Lobotomy Modern Engine v{0} (F9:UI / F8:Gear)", PluginInfo.PLUGIN_VERSION), _headerStyle, EmptyOptions);
             GUILayout.Space(1f);
 
             // FPS & フレーム時間

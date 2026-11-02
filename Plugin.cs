@@ -17,7 +17,7 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.2";
+        public const string PLUGIN_VERSION = "0.7.3";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
@@ -157,18 +157,13 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatController_SetCost_Patch), "DebugStatCost (StatController 1-LOB Hook)");
                 }
 
-                // UIテキストサイズ・エンサイクロペディア・ギフト・ローディング文字切れピンポイント修正パッチ
+                // UIテキストサイズ・エンサイクロペディア・ギフト視認性改善パッチ (ローディング画面の座標は一切変更せずバニラ維持)
                 if (EnableUITextReadabilityFix.Value)
                 {
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWindow_SetDesc_Patch), "UITextReadability (Encyclopedia Story SetDesc)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_TypeInfo_Patch), "UITextReadability (Encyclopedia GiftSlot TypeInfo)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.GiftSlot_SetModel_Model_Patch), "UITextReadability (Encyclopedia GiftSlot Model)");
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentGiftSlot_SetData_Patch), "UITextReadability (InGameUI AgentGiftSlot Data)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.LocalizeTextLoadScript_SetText_Patch), "UITextReadability (Loading Screen Localize Overflow)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.ContinueLoadingScene_OnEnable_Patch), "UITextReadability (ContinueLoadingScene Overflow)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.TitleEndScene_OnEnable_Patch), "UITextReadability (TitleEndScene Overflow)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.StoryEndScene_OnEnable_Patch), "UITextReadability (StoryEndScene Overflow)");
-                    ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.DayEndScene_OnEnable_Patch), "UITextReadability (DayEndScene Overflow)");
                 }
 
                 // v0.7.0 バニラ固有バグ修正パッチ群 (note記事準拠・全9項目個別トグル対応)
@@ -333,6 +328,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.2";
+        public const string PLUGIN_VERSION = "0.7.3";
     }
 }
