@@ -34,17 +34,29 @@ namespace LobotomyModernEngine.Patches
         // 静的空配列（Mono 2.0 / .NET 3.5 互換）
         private static readonly BarrierBuf[] EmptyBarriers = new BarrierBuf[0];
 
-        // メトリクス & Transpiler 適用検証ステータス
+        // メトリクス & Transpiler 適用検証ステータス (2メソッド個別に一致数・置換数を厳密管理)
         public static long TotalTakeDamageCount = 0;
         public static int TakeDamagePerSec = 0;
         public static long ZeroBarrierAllocAvoided = 0;
         public static long ActiveBarrierCount = 0;
         public static int MaxBarrierSeen = 0;
 
+        public static int MatchedCallSitesInTakeDamage = 0;
         public static int ReplacedCallSitesInTakeDamage = 0;
+        public static int MatchedCallSitesInTakeDamageWithoutEffect = 0;
         public static int ReplacedCallSitesInTakeDamageWithoutEffect = 0;
+
         public static int TotalReplacedCallSites => ReplacedCallSitesInTakeDamage + ReplacedCallSitesInTakeDamageWithoutEffect;
-        public static bool IsTranspilerVerified => ReplacedCallSitesInTakeDamage == 4;
+
+        /// <summary>
+        /// 2メソッド（TakeDamage / TakeDamageWithoutEffect）それぞれの対象命令（ldfld _barrierBufList）との一致数と置換数が
+        /// ともに期待値の4件（計8/8件）に達した場合のみ厳密に「検証済」とする
+        /// </summary>
+        public static bool IsTranspilerVerified =>
+            MatchedCallSitesInTakeDamage == 4 &&
+            ReplacedCallSitesInTakeDamage == 4 &&
+            MatchedCallSitesInTakeDamageWithoutEffect == 4 &&
+            ReplacedCallSitesInTakeDamageWithoutEffect == 4;
 
         /// <summary>
         /// バリア配列の最適化取得メソッド
@@ -111,6 +123,7 @@ namespace LobotomyModernEngine.Patches
             public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
             {
                 List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+                int matchedCount = 0;
                 int replacedCount = 0;
 
                 for (int i = 0; i < codes.Count; i++)
@@ -118,20 +131,31 @@ namespace LobotomyModernEngine.Patches
                     var inst = codes[i];
                     if (inst.opcode == OpCodes.Callvirt && inst.operand is MethodInfo mi && mi == TargetToArrayMethod)
                     {
-                        // 直前の命令が ldfld UnitModel::_barrierBufList であることも合わせて検証
-                        bool prevMatches = (i > 0 && codes[i - 1].opcode == OpCodes.Ldfld && Equals(codes[i - 1].operand, TargetBarrierListField));
-                        inst.opcode = OpCodes.Call;
-                        inst.operand = ReplacementMethod;
-                        replacedCount++;
+                        // 直前の命令が ldfld UnitModel::_barrierBufList と完全一致することを必須の置換条件とする
+                        bool isTargetBarrierField = (i > 0 && codes[i - 1].opcode == OpCodes.Ldfld && Equals(codes[i - 1].operand, TargetBarrierListField));
+                        if (isTargetBarrierField)
+                        {
+                            inst.opcode = OpCodes.Call;
+                            inst.operand = ReplacementMethod;
+                            matchedCount++;
+                            replacedCount++;
 
-                        Plugin.Logger.LogInfo(string.Format(
-                            "[LME Transpiler Verify] WorkerModel.TakeDamage IL index {0} (prev ldfld match={1}): callvirt List<BarrierBuf>::ToArray() -> call TakeDamagePatch::GetBarrierSnapshot()",
-                            i, prevMatches));
+                            Plugin.Logger.LogInfo(string.Format(
+                                "[LME Transpiler Verified] WorkerModel.TakeDamage IL index {0}: ldfld _barrierBufList matched -> replaced callvirt List<BarrierBuf>::ToArray() with call TakeDamagePatch::GetBarrierSnapshot()",
+                                i));
+                        }
+                        else
+                        {
+                            Plugin.Logger.LogWarning(string.Format(
+                                "[LME Transpiler Warning] WorkerModel.TakeDamage IL index {0}: Found ToArray() call but preceding opcode was not 'ldfld _barrierBufList'! Leaving untouched.",
+                                i));
+                        }
                     }
                 }
 
+                MatchedCallSitesInTakeDamage = matchedCount;
                 ReplacedCallSitesInTakeDamage = replacedCount;
-                Plugin.Logger.LogInfo(string.Format("[LME Transpiler] Hooked WorkerModel.TakeDamage: Replaced {0}/4 BarrierBuf.ToArray calls.", replacedCount));
+                Plugin.Logger.LogInfo(string.Format("[LME Transpiler] Hooked WorkerModel.TakeDamage: Matched {0}/4, Replaced {1}/4 BarrierBuf.ToArray calls.", matchedCount, replacedCount));
                 return codes;
             }
         }
@@ -150,6 +174,7 @@ namespace LobotomyModernEngine.Patches
             public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
             {
                 List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+                int matchedCount = 0;
                 int replacedCount = 0;
 
                 for (int i = 0; i < codes.Count; i++)
@@ -157,19 +182,31 @@ namespace LobotomyModernEngine.Patches
                     var inst = codes[i];
                     if (inst.opcode == OpCodes.Callvirt && inst.operand is MethodInfo mi && mi == TargetToArrayMethod)
                     {
-                        bool prevMatches = (i > 0 && codes[i - 1].opcode == OpCodes.Ldfld && Equals(codes[i - 1].operand, TargetBarrierListField));
-                        inst.opcode = OpCodes.Call;
-                        inst.operand = ReplacementMethod;
-                        replacedCount++;
+                        // 直前の命令が ldfld UnitModel::_barrierBufList と完全一致することを必須の置換条件とする
+                        bool isTargetBarrierField = (i > 0 && codes[i - 1].opcode == OpCodes.Ldfld && Equals(codes[i - 1].operand, TargetBarrierListField));
+                        if (isTargetBarrierField)
+                        {
+                            inst.opcode = OpCodes.Call;
+                            inst.operand = ReplacementMethod;
+                            matchedCount++;
+                            replacedCount++;
 
-                        Plugin.Logger.LogInfo(string.Format(
-                            "[LME Transpiler Verify] WorkerModel.TakeDamageWithoutEffect IL index {0} (prev ldfld match={1}): callvirt List<BarrierBuf>::ToArray() -> call TakeDamagePatch::GetBarrierSnapshot()",
-                            i, prevMatches));
+                            Plugin.Logger.LogInfo(string.Format(
+                                "[LME Transpiler Verified] WorkerModel.TakeDamageWithoutEffect IL index {0}: ldfld _barrierBufList matched -> replaced callvirt List<BarrierBuf>::ToArray() with call TakeDamagePatch::GetBarrierSnapshot()",
+                                i));
+                        }
+                        else
+                        {
+                            Plugin.Logger.LogWarning(string.Format(
+                                "[LME Transpiler Warning] WorkerModel.TakeDamageWithoutEffect IL index {0}: Found ToArray() call but preceding opcode was not 'ldfld _barrierBufList'! Leaving untouched.",
+                                i));
+                        }
                     }
                 }
 
+                MatchedCallSitesInTakeDamageWithoutEffect = matchedCount;
                 ReplacedCallSitesInTakeDamageWithoutEffect = replacedCount;
-                Plugin.Logger.LogInfo(string.Format("[LME Transpiler] Hooked WorkerModel.TakeDamageWithoutEffect: Replaced {0}/4 BarrierBuf.ToArray calls.", replacedCount));
+                Plugin.Logger.LogInfo(string.Format("[LME Transpiler] Hooked WorkerModel.TakeDamageWithoutEffect: Matched {0}/4, Replaced {1}/4 BarrierBuf.ToArray calls.", matchedCount, replacedCount));
                 return codes;
             }
         }

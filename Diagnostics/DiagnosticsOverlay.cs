@@ -202,10 +202,29 @@ namespace LobotomyModernEngine.Diagnostics
                 _goodStyle,
                 EmptyOptions);
 
+            string transpilerStatus;
+            GUIStyle transpilerStyle;
+            if (TakeDamagePatch.IsTranspilerVerified)
+            {
+                transpilerStatus = "置換検証済 (8/8箇所一致・置換)";
+                transpilerStyle = _goodStyle;
+            }
+            else if (TakeDamagePatch.TotalReplacedCallSites > 0)
+            {
+                transpilerStatus = string.Format("部分置換/検証中 (TakeDamage:{0}/4, WithoutEffect:{1}/4)",
+                    TakeDamagePatch.ReplacedCallSitesInTakeDamage,
+                    TakeDamagePatch.ReplacedCallSitesInTakeDamageWithoutEffect);
+                transpilerStyle = _warnStyle;
+            }
+            else
+            {
+                transpilerStatus = "未適用 / 未フック";
+                transpilerStyle = _warnStyle;
+            }
+
             GUILayout.Label(
-                string.Format("IL Transpiler: [{0}] (WorkerModel被弾処理 8/8箇所置換済)",
-                    TakeDamagePatch.IsTranspilerVerified ? "置換検証済" : "未適用"),
-                TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
+                string.Format("IL Transpiler: [{0}]", transpilerStatus),
+                transpilerStyle,
                 EmptyOptions);
 
             GUILayout.Space(2f);
@@ -224,32 +243,38 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
             GUILayout.Space(3f);
 
-            // 2. キャッシュ稼働状況 & 負荷オーバーヘッド計測
-            GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実行時実測値):", _headerStyle, EmptyOptions);
+            // 2. キャッシュ稼働状況 & 負荷オーバーヘッド計測（動的実働判定）
+            GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実働監視):", _headerStyle, EmptyOptions);
 
+            bool spineActive = SpineAtlasCachePatch.CacheHitCount > 0 || SpineAtlasCachePatch.DestroyedNativeObjectCount > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 (安全解放: {2}個 / 破棄保留: {3}個)",
+                string.Format("• [{0}] ①Spine PMAキャッシュ: 再利用 {1}回 / 保持 {2}個 (安全解放: {3}個 / 破棄保留: {4}個)",
+                    spineActive ? "実働確認" : "未発生/待機中",
                     SpineAtlasCachePatch.CacheHitCount,
                     SpineAtlasCachePatch.CachedRegionCount,
                     SpineAtlasCachePatch.DestroyedNativeObjectCount,
                     SpineAtlasCachePatch.RetainedInUseObjectCount),
-                _goodStyle,
+                spineActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
+            bool cursorActive = CursorLeakPatch.AvoidedCursorTexAllocations > 0 || CursorLeakPatch.DestroyedCursorTexCount > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 (安全解放: {2}個 / 破棄保留: {3}個)",
+                string.Format("• [{0}] ①照準カーソルリーク遮断: 生成回避 {1}回 / 保持 {2}個 (安全解放: {3}個 / 破棄保留: {4}個)",
+                    cursorActive ? "実働確認" : "未発生/待機中",
                     CursorLeakPatch.AvoidedCursorTexAllocations,
                     CursorLeakPatch.CachedCursorTextureCount,
                     CursorLeakPatch.DestroyedCursorTexCount,
                     CursorLeakPatch.RetainedCursorCount),
-                _goodStyle,
+                cursorActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
+            bool dirtyActive = WorkerPortraitPatch.AvoidedPortraitRebuilds > 0 || WorkerPortraitPatch.ExecutedPortraitRebuilds > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] ②Dirty差分更新: スキップ {0}回 (実更新 {1}回)",
+                string.Format("• [{0}] ②Dirty差分更新: スキップ {1}回 (実更新 {2}回)",
+                    dirtyActive ? "実働確認" : "未発生/待機中",
                     WorkerPortraitPatch.AvoidedPortraitRebuilds,
                     WorkerPortraitPatch.ExecutedPortraitRebuilds),
-                _goodStyle,
+                dirtyActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
             GUILayout.Label(
@@ -261,25 +286,32 @@ namespace LobotomyModernEngine.Diagnostics
                 _labelStyle,
                 EmptyOptions);
 
+            bool listActive = WorkerListCachePatch.AvoidedReadOnlyAllocations > 0 || SpineOptimizerPatch.AvoidedCameraLookups > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] ③職員リスト&カメラ共有: ReadOnly回避 {0}回 / Camera.main回避 {1}回",
+                string.Format("• [{0}] ③職員リスト&カメラ共有: ReadOnly回避 {1}回 / Camera.main回避 {2}回",
+                    listActive ? "実働確認" : "未発生/待機中",
                     WorkerListCachePatch.AvoidedReadOnlyAllocations,
                     SpineOptimizerPatch.AvoidedCameraLookups),
-                _goodStyle,
+                listActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
+            bool dmgActive = TakeDamagePatch.ZeroBarrierAllocAvoided > 0 || TakeDamagePatch.TotalTakeDamageCount > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] ④TakeDamage IL最適化: 被弾 {0}/s (0バリア回避: {1}回)",
+                string.Format("• [{0}] ④TakeDamage IL最適化: 被弾 {1}/s (0バリア回避: {2}回 / 累計被弾: {3}回)",
+                    dmgActive ? "実働確認" : (TakeDamagePatch.IsTranspilerVerified ? "置換済/被弾待機中" : "未検証"),
                     _displayDamagePerSec,
-                    TakeDamagePatch.ZeroBarrierAllocAvoided),
-                TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
+                    TakeDamagePatch.ZeroBarrierAllocAvoided,
+                    TakeDamagePatch.TotalTakeDamageCount),
+                dmgActive ? _goodStyle : (TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle),
                 EmptyOptions);
 
+            bool noticeActive = NoticePatch.AvoidedAllocations > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] Notice.Send CoW化: 配信 {0}/s (ToArray配列生成回避: {1}回)",
+                string.Format("• [{0}] Notice.Send CoW化: 配信 {1}/s (ToArray配列生成回避: {2}回)",
+                    noticeActive ? "実働確認" : "未発生/待機中",
                     _displayNoticePerSec,
                     NoticePatch.AvoidedAllocations),
-                _goodStyle,
+                noticeActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
             GUILayout.Space(3f);
@@ -287,17 +319,21 @@ namespace LobotomyModernEngine.Diagnostics
             // 3. バニラバグ修正・UI改善・育成緩和の稼働状況
             GUILayout.Label("【2】バニラ9大バグ修正・UI文字改善・デバッグ機能:", _headerStyle, EmptyOptions);
 
+            bool bugfixActive = VanillaBugFixPatch.TotalTriggeredFixes > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] バニラ固有バグ修正: {0}/9 項目有効 (実ゲーム内でバグ発動阻止: {1}回)",
+                string.Format("• [{0}] バニラ固有バグ修正: {1}/9 項目有効 (実ゲーム内でバグ発動阻止: {2}回)",
+                    bugfixActive ? "実働確認" : "パッチ適用済/待機中",
                     VanillaBugFixPatch.ActiveBugFixGroupCount,
                     VanillaBugFixPatch.TotalTriggeredFixes),
-                _goodStyle,
+                bugfixActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
+            bool textActive = UITextReadabilityPatch.EnhancedTextCount > 0;
             GUILayout.Label(
-                string.Format("• [実働確認済] 図鑑・ギフト文字サイズ改善: 累計 {0} 箇所のテキストを拡大補正 (ロード画面はバニラ維持)",
+                string.Format("• [{0}] 図鑑・ギフト文字サイズ改善: 累計 {1} 箇所のテキストを拡大補正 (ロード画面はバニラ維持)",
+                    textActive ? "実働確認" : "未表示/待機中",
                     UITextReadabilityPatch.EnhancedTextCount),
-                _goodStyle,
+                textActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
             bool lobEnabled = StatUpgradeCostPatch.IsEnabled;

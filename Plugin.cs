@@ -15,9 +15,9 @@ namespace LobotomyModernEngine
     [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
-        public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
-        public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.5";
+        public const string PLUGIN_GUID = PluginInfo.PLUGIN_GUID;
+        public const string PLUGIN_NAME = PluginInfo.PLUGIN_NAME;
+        public const string PLUGIN_VERSION = PluginInfo.PLUGIN_VERSION;
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
