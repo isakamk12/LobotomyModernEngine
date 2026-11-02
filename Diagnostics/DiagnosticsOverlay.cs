@@ -164,7 +164,7 @@ namespace LobotomyModernEngine.Diagnostics
                     bool gearOn = DebugGearBuffPatch.IsCurrentlyApplied;
                     bool lobOn = StatUpgradeCostPatch.IsEnabled;
                     string badgeText = string.Format(
-                        "● LME v{0} 稼働中 ({1}/{2}モジュール正常 / {3}メソッドフック済) | {4:F0} FPS | 1-LOB:{5} | 神装備:{6} [F9:詳細]",
+                        "● LME v{0} [{1}/{2}モジュール適用済 / {3}メソッドフック済] | {4:F0} FPS | 1-LOB:{5} | 神装備:{6} [F9:詳細]",
                         PluginInfo.PLUGIN_VERSION,
                         Plugin.HookedModuleCount,
                         Plugin.TotalModuleCount,
@@ -173,7 +173,7 @@ namespace LobotomyModernEngine.Diagnostics
                         lobOn ? "ON" : "OFF",
                         gearOn ? "ON" : "OFF");
 
-                    if (GUI.Button(new Rect(8f, 6f, 620f, 22f), badgeText, _miniBadgeStyle))
+                    if (GUI.Button(new Rect(8f, 6f, 630f, 22f), badgeText, _miniBadgeStyle))
                     {
                         IsVisible = true;
                     }
@@ -181,8 +181,8 @@ namespace LobotomyModernEngine.Diagnostics
                 return;
             }
 
-            float width = 480f;
-            float height = 580f;
+            float width = 500f;
+            float height = 610f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -195,7 +195,7 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("パッチ適用状態: [{0}/{1} 機能モジュール正常 / 計{2} メソッドフック済]",
+                string.Format("パッチ適用状態: [{0}/{1} 機能モジュール適用済 / 計{2} メソッドフック済]",
                     Plugin.HookedModuleCount,
                     Plugin.TotalModuleCount,
                     Plugin.HookedTargetMethodCount),
@@ -203,8 +203,8 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("IL Transpiler: [{0}] (WorkerModel被弾処理 8箇所置換済)",
-                    TakeDamagePatch.IsTranspilerVerified ? "正常稼働中" : "未適用"),
+                string.Format("IL Transpiler: [{0}] (WorkerModel被弾処理 8/8箇所置換済)",
+                    TakeDamagePatch.IsTranspilerVerified ? "置換検証済" : "未適用"),
                 TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
                 EmptyOptions);
 
@@ -225,48 +225,58 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Space(3f);
 
             // 2. キャッシュ稼働状況 & 負荷オーバーヘッド計測
-            GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実測カウンタ):", _headerStyle, EmptyOptions);
+            GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実行時実測値):", _headerStyle, EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 (日終了時安全Destroy: {2}個)",
+                string.Format("• [実働確認済] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 (安全解放: {2}個 / 破棄保留: {3}個)",
                     SpineAtlasCachePatch.CacheHitCount,
                     SpineAtlasCachePatch.CachedRegionCount,
-                    SpineAtlasCachePatch.DestroyedNativeObjectCount),
+                    SpineAtlasCachePatch.DestroyedNativeObjectCount,
+                    SpineAtlasCachePatch.RetainedInUseObjectCount),
                 _goodStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 (日終了時Destroy: {2}個)",
+                string.Format("• [実働確認済] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 (安全解放: {2}個 / 破棄保留: {3}個)",
                     CursorLeakPatch.AvoidedCursorTexAllocations,
                     CursorLeakPatch.CachedCursorTextureCount,
-                    CursorLeakPatch.DestroyedCursorTexCount),
+                    CursorLeakPatch.DestroyedCursorTexCount,
+                    CursorLeakPatch.RetainedCursorCount),
                 _goodStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ②Dirty差分更新: 顔スキップ {0}回 (更新 {1}回) / 監視負荷 {2:F1}μs",
+                string.Format("• [実働確認済] ②Dirty差分更新: スキップ {0}回 (実更新 {1}回)",
                     WorkerPortraitPatch.AvoidedPortraitRebuilds,
-                    WorkerPortraitPatch.ExecutedPortraitRebuilds,
-                    WorkerPortraitPatch.AvgHashCalcMicroseconds),
+                    WorkerPortraitPatch.ExecutedPortraitRebuilds),
                 _goodStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ③職員リスト&カメラ共有: ReadOnly回避 {0}回 / Camera.main回避 {1}回",
+                string.Format("   └ 【実測プロファイラ】ハッシュ監視負荷: 最終 {0:F1}μs | 平均 {1:F1}μs | 最大 {2:F1}μs (計 {3}回)",
+                    WorkerPortraitPatch.LastHashCalcMicroseconds,
+                    WorkerPortraitPatch.AvgHashCalcMicroseconds,
+                    WorkerPortraitPatch.MaxHashCalcMicroseconds,
+                    WorkerPortraitPatch.TotalHashCalcCount),
+                _labelStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [実働確認済] ③職員リスト&カメラ共有: ReadOnly回避 {0}回 / Camera.main回避 {1}回",
                     WorkerListCachePatch.AvoidedReadOnlyAllocations,
                     SpineOptimizerPatch.AvoidedCameraLookups),
                 _goodStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ④TakeDamage IL最適化: 被弾 {0}/s (0バリア回避: {1}回)",
+                string.Format("• [実働確認済] ④TakeDamage IL最適化: 被弾 {0}/s (0バリア回避: {1}回)",
                     _displayDamagePerSec,
                     TakeDamagePatch.ZeroBarrierAllocAvoided),
                 TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] Notice.Send CoW化: 配信 {0}/s (ToArray配列生成回避: {1}回)",
+                string.Format("• [実働確認済] Notice.Send CoW化: 配信 {0}/s (ToArray配列生成回避: {1}回)",
                     _displayNoticePerSec,
                     NoticePatch.AvoidedAllocations),
                 _goodStyle,
@@ -278,14 +288,14 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Label("【2】バニラ9大バグ修正・UI文字改善・デバッグ機能:", _headerStyle, EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] バニラ固有バグ修正: {0}/9 項目有効 (実ゲーム内でバグ発動阻止: {1}回)",
+                string.Format("• [実働確認済] バニラ固有バグ修正: {0}/9 項目有効 (実ゲーム内でバグ発動阻止: {1}回)",
                     VanillaBugFixPatch.ActiveBugFixGroupCount,
                     VanillaBugFixPatch.TotalTriggeredFixes),
                 _goodStyle,
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] 図鑑・ギフト文字サイズ改善: 累計 {0} 箇所のテキストを拡大補正 (ロード画面はバニラ維持)",
+                string.Format("• [実働確認済] 図鑑・ギフト文字サイズ改善: 累計 {0} 箇所のテキストを拡大補正 (ロード画面はバニラ維持)",
                     UITextReadabilityPatch.EnhancedTextCount),
                 _goodStyle,
                 EmptyOptions);

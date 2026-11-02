@@ -72,6 +72,7 @@ namespace LobotomyModernEngine.Patches
         public static long CacheHitCount = 0;
         public static long CacheMissCount = 0;
         public static long DestroyedNativeObjectCount = 0;
+        public static int RetainedInUseObjectCount = 0;
         public static int CachedRegionCount => Cache.Count;
 
         private static void DestroyEntryResources(CachedAtlasEntry entry)
@@ -93,15 +94,125 @@ namespace LobotomyModernEngine.Patches
         }
 
         /// <summary>
-        /// シーン遷移時（日の終了・タイトル復帰・チェックポイントロード）またはゲーム終了時に安全に全解放
+        /// シーン遷移時の安全なリソース解放 (v0.7.6 Live Reference Verification)
+        /// 単に全破棄するのではなく、DontDestroyOnLoad やアクティブな Renderer / UI Graphic で
+        /// 現在も参照されているマテリアル・テクスチャを走査・特定し、
+        /// 使用中素材はキャッシュ内にそのまま安全に保持 (Retained) し、
+        /// 参照が完全にゼロとなった孤立リソースのみを UnityEngine.Object.Destroy で解放する。
         /// </summary>
-        public static void ClearAllAndDestroy()
+        public static void SafeClearUnusedResources()
+        {
+            if (Cache.Count == 0) return;
+
+            // 1. 現在生存している全Renderer・UIコンポーネントから使用中Material/Textureを収集
+            HashSet<Material> activeMaterials = new HashSet<Material>();
+            HashSet<Texture> activeTextures = new HashSet<Texture>();
+
+            try
+            {
+                Renderer[] renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
+                if (renderers != null)
+                {
+                    for (int i = 0; i < renderers.Length; i++)
+                    {
+                        Renderer r = renderers[i];
+                        if (r == null) continue;
+                        Material[] mats = r.sharedMaterials;
+                        if (mats != null)
+                        {
+                            for (int j = 0; j < mats.Length; j++)
+                            {
+                                Material m = mats[j];
+                                if (m != null)
+                                {
+                                    activeMaterials.Add(m);
+                                    if (m.mainTexture != null) activeTextures.Add(m.mainTexture);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                UnityEngine.UI.Graphic[] graphics = UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Graphic>();
+                if (graphics != null)
+                {
+                    for (int i = 0; i < graphics.Length; i++)
+                    {
+                        UnityEngine.UI.Graphic g = graphics[i];
+                        if (g == null) continue;
+                        if (g.material != null)
+                        {
+                            activeMaterials.Add(g.material);
+                            if (g.material.mainTexture != null) activeTextures.Add(g.material.mainTexture);
+                        }
+                        if (g.mainTexture != null)
+                        {
+                            activeTextures.Add(g.mainTexture);
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // 万一の走査例外時は安全側に倒し、破棄を行わずに次回へ繰り延べる
+                return;
+            }
+
+            // 2. キャッシュ内の各エントリを検証し、アクティブ参照のない孤立エントリのみを破棄
+            List<AtlasCacheKey> toRemove = new List<AtlasCacheKey>();
+            int retained = 0;
+
+            foreach (var kvp in Cache)
+            {
+                var entry = kvp.Value;
+                if (entry == null)
+                {
+                    toRemove.Add(kvp.Key);
+                    continue;
+                }
+
+                bool inUse = false;
+                if (entry.CreatedMaterial != null && activeMaterials.Contains(entry.CreatedMaterial))
+                {
+                    inUse = true;
+                }
+                if (entry.CreatedTexture != null && activeTextures.Contains(entry.CreatedTexture))
+                {
+                    inUse = true;
+                }
+
+                if (inUse)
+                {
+                    // ゲーム側で現在も使用中（DontDestroyOnLoad等）のため破棄せずキャッシュに保持
+                    retained++;
+                }
+                else
+                {
+                    // 誰からも参照されていない孤立リソースであることが確定 -> 安全にDestroy
+                    DestroyEntryResources(entry);
+                    toRemove.Add(kvp.Key);
+                }
+            }
+
+            for (int i = 0; i < toRemove.Count; i++)
+            {
+                Cache.Remove(toRemove[i]);
+            }
+
+            RetainedInUseObjectCount = retained;
+        }
+
+        /// <summary>
+        /// プラグイン終了時など、全リソースを強制破棄する場合
+        /// </summary>
+        public static void ForceClearAllAndDestroy()
         {
             foreach (var kvp in Cache)
             {
                 DestroyEntryResources(kvp.Value);
             }
             Cache.Clear();
+            RetainedInUseObjectCount = 0;
         }
 
         [HarmonyPatch("ToAtlasRegionPMAClone", new Type[] { typeof(Sprite), typeof(Shader), typeof(TextureFormat), typeof(bool), typeof(Material) })]

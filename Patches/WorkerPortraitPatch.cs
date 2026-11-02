@@ -32,14 +32,30 @@ namespace LobotomyModernEngine.Patches
 
         public static long AvoidedPortraitRebuilds = 0;
         public static long ExecutedPortraitRebuilds = 0;
+
+        // 【実測プロファイラ統計 (Microseconds)】
         public static double LastHashCalcMicroseconds = 0.0;
         public static double AvgHashCalcMicroseconds = 0.0;
+        public static double MaxHashCalcMicroseconds = 0.0;
+        public static double MinHashCalcMicroseconds = 999999.0;
+        public static long TotalHashCalcCount => _hashCalcCount;
+
         private static double _hashTimeSum = 0.0;
         private static long _hashCalcCount = 0;
 
         public static void ClearCache()
         {
             Cache.Clear();
+        }
+
+        public static void ResetProfiler()
+        {
+            LastHashCalcMicroseconds = 0.0;
+            AvgHashCalcMicroseconds = 0.0;
+            MaxHashCalcMicroseconds = 0.0;
+            MinHashCalcMicroseconds = 999999.0;
+            _hashTimeSum = 0.0;
+            _hashCalcCount = 0;
         }
 
         public static void PruneDeadReferences()
@@ -248,6 +264,8 @@ namespace LobotomyModernEngine.Patches
             _hashTimeSum += us;
             _hashCalcCount++;
             AvgHashCalcMicroseconds = _hashTimeSum / _hashCalcCount;
+            if (us > MaxHashCalcMicroseconds) MaxHashCalcMicroseconds = us;
+            if (us < MinHashCalcMicroseconds) MinHashCalcMicroseconds = us;
 
             if (state.Initialized && state.LastWorkerInstanceId == currentWorkerId && state.LastStateHash == currentHash)
             {

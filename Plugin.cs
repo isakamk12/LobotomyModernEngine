@@ -274,10 +274,7 @@ namespace LobotomyModernEngine
             // 世代番号を更新（旧世代の非同期ジョブを無効化）
             int nextGen = GenerationTracker.NextGeneration();
 
-            // シーン遷移時（前日の全描画が確実に終了・アンロードされた安全なタイミング）にのみネイティブリソースを一括解放
-            SpineAtlasCachePatch.ClearAllAndDestroy();
-            CursorLeakPatch.ClearAllAndDestroy();
-
+            // 共通キャッシュの初期化
             WorkerSpriteSetterPatch.ClearCache();
             IsolateRoomPatch.ClearCache();
             SefiraPanelPatch.ClearCache();
@@ -293,7 +290,29 @@ namespace LobotomyModernEngine
             // 既にEquipmentTypeListがロード済みならデバッグ装備状態をConfigに同期
             DebugGearBuffPatch.SyncWithConfig();
 
-            Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, safely destroyed caches.", scene.name, nextGen));
+            // 【v0.7.6 安全なリソース解放コルーチン】
+            // SceneManager.sceneLoaded 直後は旧シーンの GameObject 破棄キューが未処理の可能性がある。
+            // 次フレーム (yield return null) まで待機し、確実に旧オブジェクトが消滅した状態で
+            // アクティブな Renderer / UI Graphic の参照を精査して孤立リソースのみを Object.Destroy する。
+            StartCoroutine(DeferredSceneCleanup(scene.name, nextGen));
+        }
+
+        private System.Collections.IEnumerator DeferredSceneCleanup(string sceneName, int generation)
+        {
+            // 旧シーンオブジェクトの完全破棄と新シーンAwake完了を待つため1フレーム待機
+            yield return null;
+
+            SpineAtlasCachePatch.SafeClearUnusedResources();
+            CursorLeakPatch.SafeClearUnusedResources();
+
+            Logger.LogInfo(string.Format(
+                "[LME Lifecycle v0.7.6] Scene loaded: {0} (Gen:{1}). Safely verified live references: Spine (Destroyed:{2}, Retained:{3}), Cursor (Destroyed:{4}, Retained:{5})",
+                sceneName,
+                generation,
+                SpineAtlasCachePatch.DestroyedNativeObjectCount,
+                SpineAtlasCachePatch.RetainedInUseObjectCount,
+                CursorLeakPatch.DestroyedCursorTexCount,
+                CursorLeakPatch.RetainedCursorCount));
         }
 
         private void ApplyAndVerifyPatch(Type patchType, string patchName)
@@ -336,8 +355,8 @@ namespace LobotomyModernEngine
         private void OnDestroy()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
-            SpineAtlasCachePatch.ClearAllAndDestroy();
-            CursorLeakPatch.ClearAllAndDestroy();
+            SpineAtlasCachePatch.ForceClearAllAndDestroy();
+            CursorLeakPatch.ForceClearAllAndDestroy();
             BoundedWorkerPool.Shutdown();
         }
     }
@@ -346,6 +365,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.5";
+        public const string PLUGIN_VERSION = "0.7.6";
     }
 }

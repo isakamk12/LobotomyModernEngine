@@ -56,12 +56,89 @@ namespace LobotomyModernEngine.Patches
 
         public static long AvoidedCursorTexAllocations = 0;
         public static long DestroyedCursorTexCount = 0;
+        public static int RetainedCursorCount = 0;
         public static int CachedCursorTextureCount => ScaledCursorCache.Count;
 
         /// <summary>
-        /// シーン遷移時または終了時に安全に全解放
+        /// シーン遷移時の安全なリソース解放 (v0.7.6 Live Reference Verification)
+        /// CursorManager やアクティブな UI/Renderer で現在も使用されているテクスチャを検知し、
+        /// 使用中テクスチャは破棄せず保持 (Retained) し、未参照テクスチャのみを Object.Destroy で解放する。
         /// </summary>
-        public static void ClearAllAndDestroy()
+        public static void SafeClearUnusedResources()
+        {
+            if (ScaledCursorCache.Count == 0) return;
+
+            HashSet<Texture> activeTextures = new HashSet<Texture>();
+            try
+            {
+                // CursorManager の現在テクスチャを保護
+                if (CursorManager.instance != null)
+                {
+                    Texture currentCursor = Traverse.Create(CursorManager.instance).Field("currentCursorTexture").GetValue<Texture2D>();
+                    if (currentCursor != null)
+                    {
+                        activeTextures.Add(currentCursor);
+                    }
+                }
+
+                // アクティブな UI Graphic から使用中テクスチャを収集
+                UnityEngine.UI.Graphic[] graphics = UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Graphic>();
+                if (graphics != null)
+                {
+                    for (int i = 0; i < graphics.Length; i++)
+                    {
+                        var g = graphics[i];
+                        if (g != null && g.mainTexture != null)
+                        {
+                            activeTextures.Add(g.mainTexture);
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            List<CursorScaleKey> toRemove = new List<CursorScaleKey>();
+            int retained = 0;
+
+            foreach (var kvp in ScaledCursorCache)
+            {
+                var tex = kvp.Value;
+                if (tex == null)
+                {
+                    toRemove.Add(kvp.Key);
+                    continue;
+                }
+
+                if (activeTextures.Contains(tex))
+                {
+                    retained++;
+                }
+                else
+                {
+                    UnityEngine.Object.Destroy(tex);
+                    DestroyedCursorTexCount++;
+                    toRemove.Add(kvp.Key);
+                }
+            }
+
+            for (int i = 0; i < toRemove.Count; i++)
+            {
+                ScaledCursorCache.Remove(toRemove[i]);
+            }
+
+            RetainedCursorCount = retained;
+            _lastBaseCursorTex = null;
+            _lastScaledWidth = -1;
+            _lastScaledHeight = -1;
+        }
+
+        /// <summary>
+        /// プラグイン終了時など、全解放を行う場合
+        /// </summary>
+        public static void ForceClearAllAndDestroy()
         {
             foreach (var kvp in ScaledCursorCache)
             {
@@ -72,6 +149,7 @@ namespace LobotomyModernEngine.Patches
                 }
             }
             ScaledCursorCache.Clear();
+            RetainedCursorCount = 0;
             _lastBaseCursorTex = null;
             _lastScaledWidth = -1;
             _lastScaledHeight = -1;
