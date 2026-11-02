@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Customizing;
 using HarmonyLib;
 using UnityEngine;
@@ -10,11 +11,10 @@ namespace LobotomyModernEngine.Patches
     /// <summary>
     /// WorkerPortraitSetter.LateUpdate の毎フレーム全再構築スパム抑止パッチ
     /// 
-    /// 【Dirtyフラグ完全性設計 (v0.7.4 監査硬化)】
-    /// バニラの SetWorker(worker) が参照する「すべての視覚状態（装備・ギフト・顔スプライト・髪色/瞳色・防具全14部位スプライト・
-    /// 死亡/パニック/制御不能・所属部門・勤続ランク・WeaponSet）」を網羅したシグネチャを計算し、
-    /// 1つでも変化したフレームは即座に再描画、変化がないフレームのみ LateUpdate 再構築をスキップする。
-    /// さらに SetArmor / SetCustomizing で外部から直接書き換えられた際はキャッシュを即座に無効化する。
+    /// 【Dirtyフラグ完全性 & 負荷計測設計 (v0.7.5)】
+    /// - バニラの SetWorker(worker) が参照する表示状態を網羅したハッシュを計算し、変化がないフレームのみ再構築をスキップ。
+    /// - 状態監視（ハッシュ計算）自体の所要時間を Stopwatch で精密計測（マイクロ秒）し、
+    ///   バニラ負荷に対して確実に軽量化が成立しているかを診断モニターへ提供。
     /// </summary>
     [HarmonyPatch(typeof(WorkerPortraitSetter))]
     public static class WorkerPortraitPatch
@@ -28,9 +28,14 @@ namespace LobotomyModernEngine.Patches
         }
 
         private static readonly Dictionary<int, PortraitState> Cache = new Dictionary<int, PortraitState>(64);
+        private static readonly Stopwatch _watch = new Stopwatch();
 
         public static long AvoidedPortraitRebuilds = 0;
         public static long ExecutedPortraitRebuilds = 0;
+        public static double LastHashCalcMicroseconds = 0.0;
+        public static double AvgHashCalcMicroseconds = 0.0;
+        private static double _hashTimeSum = 0.0;
+        private static long _hashCalcCount = 0;
 
         public static void ClearCache()
         {
@@ -205,9 +210,6 @@ namespace LobotomyModernEngine.Patches
             ExecutedPortraitRebuilds++;
         }
 
-        /// <summary>
-        /// SetArmor / SetCustomizing が直接呼ばれた場合はキャッシュを無効化し、次回 SetWorker で確実に再構築させる
-        /// </summary>
         [HarmonyPatch("SetArmor", new Type[] { typeof(EquipmentTypeInfo) })]
         [HarmonyPostfix]
         public static void Postfix_SetArmor(WorkerPortraitSetter __instance)
@@ -233,14 +235,24 @@ namespace LobotomyModernEngine.Patches
             if (!Plugin.EnableWorkerPortraitOptimization.Value) return true;
             if (___model == null) return false;
 
+            _watch.Reset();
+            _watch.Start();
+
             var state = GetOrCreateState(__instance);
             int currentWorkerId = (int)___model.instanceId;
             int currentHash = ComputeWorkerVisualHash(__instance, ___model);
 
+            _watch.Stop();
+            double us = (_watch.ElapsedTicks * 1000000.0) / Stopwatch.Frequency;
+            LastHashCalcMicroseconds = us;
+            _hashTimeSum += us;
+            _hashCalcCount++;
+            AvgHashCalcMicroseconds = _hashTimeSum / _hashCalcCount;
+
             if (state.Initialized && state.LastWorkerInstanceId == currentWorkerId && state.LastStateHash == currentHash)
             {
                 AvoidedPortraitRebuilds++;
-                return false; // 全表示要素に変化がないため毎フレームの SetWorker 再構築をスキップ
+                return false; // 表示要素に変化がないため毎フレームの SetWorker 再構築をスキップ
             }
 
             return true;

@@ -17,13 +17,15 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.4";
+        public const string PLUGIN_VERSION = "0.7.5";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
 
-        public static int HookedPatchGroupCount { get; private set; }
-        public static int TotalPatchGroupCount { get; private set; }
+        // 集計単位を明確に分離
+        public static int HookedModuleCount { get; private set; }
+        public static int TotalModuleCount { get; private set; }
+        public static int HookedTargetMethodCount { get; private set; }
 
         // Config 設定（全パッチを個別にON/OFF・切り戻し可能）
         public static ConfigEntry<bool> EnableEngineOverhaul;
@@ -62,7 +64,6 @@ namespace LobotomyModernEngine
             Logger = base.Logger;
             Logger.LogInfo(string.Format("{0} v{1} initializing on CLR {2}...", PLUGIN_NAME, PLUGIN_VERSION, Environment.Version));
 
-            // 配布エディション判定 (DEBUG_PLUS 定義時はチート・検証短縮機能がデフォルトON、通常版はデフォルトOFF)
 #if DEBUG_PLUS
             const bool defaultDebugFeatures = true;
 #else
@@ -84,9 +85,9 @@ namespace LobotomyModernEngine
             FixBlueStarArmorHeal = Config.Bind("VanillaBugFix", "FixBlueStarArmorHeal", true, "一等星は常に嘘つきバグ修正 (蒼星防具の同空間回復で精神力だけでなく体力も5回復するよう修正)");
             FixBigBirdOverloadImmunity = Config.Bind("VanillaBugFix", "FixBigBirdOverloadImmunity", true, "効かないねぇ！大鳥だから！バグ修正 (大鳥がmaxWorkCount=0のためクリフォト暴走の対象外になっていたバグ修正)");
             FixRedHoodWeaponRange = Config.Bind("VanillaBugFix", "FixRedHoodWeaponRange", true, "紅の傷跡短小バグ＆インベントリ射程表記ズレ修正 (通常攻撃時に射程が4→3に縮むバグとインベントリ射程閾値バグ修正)");
-            EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止 (Object.Destroy所有権管理付き)");
-            EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止 (Object.Destroy所有権管理付き)");
-            EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (全装備・ギフト・顔・部門Dirty検知)");
+            EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止 (日終了・シーン遷移時の安全一括Destroy)");
+            EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止 (日終了・シーン遷移時の安全一括Destroy)");
+            EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (表示状態Dirty検知＆所要時間計測)");
             EnableWorkerListCache = Config.Bind("Optimization", "WorkerListCache", true, "AgentManager/OfficerManager の ReadOnlyCollection 毎フレーム生成をゼロアロケーション化");
             EnableSpineOptimizerCache = Config.Bind("Optimization", "SpineOptimizerCache", true, "SpineOptimizerModule/WorkerUnit の毎フレーム Camera.main タグ検索を1フレーム1回に共有化");
             EnableNoticeCopyOnWrite = Config.Bind("Optimization", "NoticeCopyOnWrite", true, "Notice.Send の Copy-on-Write ゼロアロケーション化");
@@ -106,8 +107,9 @@ namespace LobotomyModernEngine
             FrameBudgetScheduler.Initialize(base.gameObject);
             BoundedWorkerPool.Initialize(MaxWorkerThreads.Value);
 
-            HookedPatchGroupCount = 0;
-            TotalPatchGroupCount = 0;
+            HookedModuleCount = 0;
+            TotalModuleCount = 0;
+            HookedTargetMethodCount = 0;
 
             if (EnableEngineOverhaul.Value)
             {
@@ -126,7 +128,7 @@ namespace LobotomyModernEngine
                 if (EnablePassableOptimization.Value)
                     ApplyAndVerifyPatch(typeof(CheckPassablePatch), "MovableObjectNode (CheckPassable Scan Optimization)");
 
-                // v0.4.0 / v0.7.4 3大ネイティブメモリリーク＆UIスパム修正パッチ（明示的 Object.Destroy 管理付き）
+                // v0.4.0 / v0.7.5 3大ネイティブメモリリーク＆UIスパム修正パッチ（日終了・シーン遷移時安全解放）
                 if (EnableSpineAtlasCache.Value)
                     ApplyAndVerifyPatch(typeof(SpineAtlasCachePatch), "SpineAtlasCache (Animation Texture2D/Material Leak Fix)");
 
@@ -137,7 +139,7 @@ namespace LobotomyModernEngine
                 }
 
                 if (EnableWorkerPortraitOptimization.Value)
-                    ApplyAndVerifyPatch(typeof(WorkerPortraitPatch), "WorkerPortraitSetter (LateUpdate Full-State Dirty Check)");
+                    ApplyAndVerifyPatch(typeof(WorkerPortraitPatch), "WorkerPortraitSetter (LateUpdate Dirty Check & Overhead Profile)");
 
                 // v0.5.0 リストReadOnlyラッパーキャッシュ & カメラ最適化 & デバッグ装備強化
                 if (EnableWorkerListCache.Value)
@@ -155,17 +157,17 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(SpineOptimizerPatch.OfficerUnit_UpdateAnimationQuality_Patch), "SpineOptimizerCache (OfficerUnit Quality)");
                 }
 
-                // デバッグ初期装備強化（ゲーム中にもON/OFF切替できるよう常時フックし、Config値に従って適用/復元）
+                // デバッグ初期装備強化
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentDataLoader_Load_Patch), "DebugGearBuff (Starter & Penitence Gear Hook)");
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentScriptBase_OnGiveDamage_Patch), "DebugGearBuff (Dynamic Weakness OnGiveDamage Hook)");
 
-                // デバッグ強化LOBポイント一律1パッチ（ゲーム中にF9画面からいつでもON/OFF切替できるよう常時フック）
+                // デバッグ強化LOBポイント一律1パッチ
                 StatUpgradeCostPatch.SyncStaticArrays();
                 ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init0_Patch), "DebugStatCost (StatUI Cost Array Hook)");
                 ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init1_Patch), "DebugStatCost (StatUI Data Init Hook)");
                 ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatController_SetCost_Patch), "DebugStatCost (StatController 1-LOB Hook)");
 
-                // UIテキストサイズ・エンサイクロペディア・ギフト視認性改善パッチ (ローディング画面の座標は一切変更せずバニラ維持)
+                // UIテキストサイズ・エンサイクロペディア・ギフト視認性改善パッチ (ローディング画面はバニラ完全維持)
                 if (EnableUITextReadabilityFix.Value)
                 {
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.CreatureInfoWindow_SetDesc_Patch), "UITextReadability (Encyclopedia Story SetDesc)");
@@ -174,7 +176,7 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(UITextReadabilityPatch.AgentGiftSlot_SetData_Patch), "UITextReadability (InGameUI AgentGiftSlot Data)");
                 }
 
-                // v0.7.0 バニラ固有バグ修正パッチ群 (note記事準拠・全9項目個別トグル対応)
+                // v0.7.0 バニラ固有バグ修正パッチ群 (全9項目)
                 if (EnableVanillaBugFixes.Value)
                 {
                     int activeGroups = 0;
@@ -255,14 +257,14 @@ namespace LobotomyModernEngine
                 }
             }
 
-            // F9 診断オーバーレイの追加
+            // 診断オーバーレイの追加
             base.gameObject.AddComponent<DiagnosticsOverlay>();
 
-            // シーン遷移イベントの購読（世代管理・キャッシュクリーンアップ・ロード時間計測）
+            // シーン遷移イベントの購読（日の終了・シーン切り替え時に安全にネイティブテクスチャを一括破棄）
             SceneManager.sceneLoaded += OnSceneLoaded;
 
-            Logger.LogInfo(string.Format("{0} initialization complete ({1}/{2} patch groups hooked). Ready for Lobotomy Corporation.",
-                PLUGIN_NAME, HookedPatchGroupCount, TotalPatchGroupCount));
+            Logger.LogInfo(string.Format("{0} initialization complete: {1}/{2} modules ({3} methods hooked). Ready for Lobotomy Corporation.",
+                PLUGIN_NAME, HookedModuleCount, TotalModuleCount, HookedTargetMethodCount));
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -272,7 +274,10 @@ namespace LobotomyModernEngine
             // 世代番号を更新（旧世代の非同期ジョブを無効化）
             int nextGen = GenerationTracker.NextGeneration();
 
-            // シーン遷移時にシーン固有キャッシュを消去・破棄済み参照を明示的に Object.Destroy して掃除
+            // シーン遷移時（前日の全描画が確実に終了・アンロードされた安全なタイミング）にのみネイティブリソースを一括解放
+            SpineAtlasCachePatch.ClearAllAndDestroy();
+            CursorLeakPatch.ClearAllAndDestroy();
+
             WorkerSpriteSetterPatch.ClearCache();
             IsolateRoomPatch.ClearCache();
             SefiraPanelPatch.ClearCache();
@@ -282,20 +287,18 @@ namespace LobotomyModernEngine
             NoticePatch.ClearCache();
             UITextReadabilityPatch.ClearCache();
             VanillaBugFixPatch.ClearCache();
-            SpineAtlasCachePatch.PruneDeadReferences();
-            CursorLeakPatch.PruneDeadReferences();
             MainThreadDispatcher.Clear();
             FrameBudgetScheduler.Clear();
 
             // 既にEquipmentTypeListがロード済みならデバッグ装備状態をConfigに同期
             DebugGearBuffPatch.SyncWithConfig();
 
-            Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, cleaned caches.", scene.name, nextGen));
+            Logger.LogInfo(string.Format("[LME Lifecycle] Scene loaded: {0}. Advanced to Generation {1}, safely destroyed caches.", scene.name, nextGen));
         }
 
         private void ApplyAndVerifyPatch(Type patchType, string patchName)
         {
-            TotalPatchGroupCount++;
+            TotalModuleCount++;
             try
             {
                 var processor = HarmonyInstance.CreateClassProcessor(patchType);
@@ -303,7 +306,8 @@ namespace LobotomyModernEngine
 
                 if (patchedMethods != null && patchedMethods.Count > 0)
                 {
-                    HookedPatchGroupCount++;
+                    HookedModuleCount++;
+                    HookedTargetMethodCount += patchedMethods.Count;
                     Logger.LogInfo(string.Format("[LME Verified] Applied {0} -> {1} method(s) hooked.", patchName, patchedMethods.Count));
                 }
                 else
@@ -319,14 +323,12 @@ namespace LobotomyModernEngine
 
         private void Update()
         {
-            // 5秒おきに破棄されたUnityオブジェクトの弱参照を検知し、ネイティブテクスチャ/マテリアルを Object.Destroy で解放
+            // プレイ中のゲーム使用中オブジェクトの誤破棄を防ぐため、プレイ中のDestroy呼び出しは行わない
             if (Time.unscaledTime - _lastPruneTime >= 5.0f)
             {
                 WorkerSpriteSetterPatch.PruneDeadReferences();
                 IsolateRoomPatch.PruneDeadReferences();
                 WorkerPortraitPatch.PruneDeadReferences();
-                SpineAtlasCachePatch.PruneDeadReferences();
-                CursorLeakPatch.PruneDeadReferences();
                 _lastPruneTime = Time.unscaledTime;
             }
         }
@@ -344,6 +346,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.4";
+        public const string PLUGIN_VERSION = "0.7.5";
     }
 }

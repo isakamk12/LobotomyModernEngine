@@ -6,8 +6,8 @@ using LobotomyModernEngine.Patches;
 namespace LobotomyModernEngine.Diagnostics
 {
     /// <summary>
-    /// v0.7.4: 各パッチが実際に稼働・機能しているかを日本語＆色分けバッジで一目で確認できる診断モニター
-    /// - 画面左上のミニ稼働バッジ（常時またはワンクリックで詳細開閉可能）
+    /// v0.7.5: 各パッチが実際に稼働・機能しているかを日本語＆色分けバッジで一目で確認できる診断モニター
+    /// - 画面左上のミニ稼働バッジ（集計単位: モジュール数とメソッドフック数を明確に分離表記）
     /// - F9 キー（またはミニバッジクリック）で開く詳細リアルタイム稼働モニター
     /// - F8 キー（またはパネル内ボタン）でデバッグ装備強化の即時切替
     /// </summary>
@@ -156,7 +156,7 @@ namespace LobotomyModernEngine.Diagnostics
         {
             InitStyles();
 
-            // パネル非表示時は画面左上にコンパクトな稼働確認バッジを表示（クリックまたはF9で詳細展開）
+            // パネル非表示時は画面左上にコンパクトな稼働確認バッジを表示（集計単位を明確に区別）
             if (!IsVisible)
             {
                 if (ShowMiniStatusBadge && (Plugin.ShowMiniHudBadge == null || Plugin.ShowMiniHudBadge.Value))
@@ -164,15 +164,16 @@ namespace LobotomyModernEngine.Diagnostics
                     bool gearOn = DebugGearBuffPatch.IsCurrentlyApplied;
                     bool lobOn = StatUpgradeCostPatch.IsEnabled;
                     string badgeText = string.Format(
-                        "● LME v{0} 稼働中 ({1}/{2}パッチ正常) | {3:F0} FPS | 1-LOB:{4} | 神装備:{5} [F9:詳細]",
+                        "● LME v{0} 稼働中 ({1}/{2}モジュール正常 / {3}メソッドフック済) | {4:F0} FPS | 1-LOB:{5} | 神装備:{6} [F9:詳細]",
                         PluginInfo.PLUGIN_VERSION,
-                        Plugin.HookedPatchGroupCount,
-                        Plugin.TotalPatchGroupCount,
+                        Plugin.HookedModuleCount,
+                        Plugin.TotalModuleCount,
+                        Plugin.HookedTargetMethodCount,
                         _fps,
                         lobOn ? "ON" : "OFF",
                         gearOn ? "ON" : "OFF");
 
-                    if (GUI.Button(new Rect(8f, 6f, 470f, 22f), badgeText, _miniBadgeStyle))
+                    if (GUI.Button(new Rect(8f, 6f, 620f, 22f), badgeText, _miniBadgeStyle))
                     {
                         IsVisible = true;
                     }
@@ -180,8 +181,8 @@ namespace LobotomyModernEngine.Diagnostics
                 return;
             }
 
-            float width = 460f;
-            float height = 565f;
+            float width = 480f;
+            float height = 580f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -194,12 +195,16 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("パッチ適用状態: [{0}/{1} モジュール正常フック済]  |  Transpiler: [{2}]",
-                    Plugin.HookedPatchGroupCount,
-                    Plugin.TotalPatchGroupCount,
-                    TakeDamagePatch.IsTranspilerVerified
-                        ? string.Format("正常 ({0}/8箇所置換)", TakeDamagePatch.TotalReplacedCallSites)
-                        : "未適用"),
+                string.Format("パッチ適用状態: [{0}/{1} 機能モジュール正常 / 計{2} メソッドフック済]",
+                    Plugin.HookedModuleCount,
+                    Plugin.TotalModuleCount,
+                    Plugin.HookedTargetMethodCount),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("IL Transpiler: [{0}] (WorkerModel被弾処理 8箇所置換済)",
+                    TakeDamagePatch.IsTranspilerVerified ? "正常稼働中" : "未適用"),
                 TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
                 EmptyOptions);
 
@@ -219,11 +224,11 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
             GUILayout.Space(3f);
 
-            // 2. 監査4項目＆メモリリーク防止のリアルタイム稼働証明
+            // 2. キャッシュ稼働状況 & 負荷オーバーヘッド計測
             GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実測カウンタ):", _headerStyle, EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 / Destroy解放 {2}個",
+                string.Format("• [稼働中] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 (日終了時安全Destroy: {2}個)",
                     SpineAtlasCachePatch.CacheHitCount,
                     SpineAtlasCachePatch.CachedRegionCount,
                     SpineAtlasCachePatch.DestroyedNativeObjectCount),
@@ -231,7 +236,7 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 / Destroy {2}個",
+                string.Format("• [稼働中] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 (日終了時Destroy: {2}個)",
                     CursorLeakPatch.AvoidedCursorTexAllocations,
                     CursorLeakPatch.CachedCursorTextureCount,
                     CursorLeakPatch.DestroyedCursorTexCount),
@@ -239,10 +244,10 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ②Dirty差分更新: 顔スキップ {0}回 (更新 {1}回) / 部門枠スキップ {2}回",
+                string.Format("• [稼働中] ②Dirty差分更新: 顔スキップ {0}回 (更新 {1}回) / 監視負荷 {2:F1}μs",
                     WorkerPortraitPatch.AvoidedPortraitRebuilds,
                     WorkerPortraitPatch.ExecutedPortraitRebuilds,
-                    SefiraPanelPatch.AvoidedSefiraPortraitUpdates),
+                    WorkerPortraitPatch.AvgHashCalcMicroseconds),
                 _goodStyle,
                 EmptyOptions);
 
@@ -254,8 +259,7 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Label(
-                string.Format("• [稼働中] ④TakeDamage IL最適化: 置換 {0}/8箇所 | 被弾 {1}/s (0バリア回避: {2}回)",
-                    TakeDamagePatch.TotalReplacedCallSites,
+                string.Format("• [稼働中] ④TakeDamage IL最適化: 被弾 {0}/s (0バリア回避: {1}回)",
                     _displayDamagePerSec,
                     TakeDamagePatch.ZeroBarrierAllocAvoided),
                 TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,

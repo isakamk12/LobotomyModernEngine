@@ -8,12 +8,9 @@ namespace LobotomyModernEngine.Patches
     /// <summary>
     /// 弾丸（スナイプ）カーソルおよび照準アニメーションの Texture2D 永久リーク修正パッチ (Cursor / Reticle Memory Leak Fix)
     /// 
-    /// 【ネイティブメモリ所有権と解放の設計 (v0.7.4 監査硬化)】
-    /// 1. バニラでは弾丸選択時の毎フレーム Update() で WorkerSpriteManager.ScaleTexture を呼び、
-    ///    new Texture2D を毎秒60個生成して1つも Destroy していなかった。
-    ///    また WorkerSpriteManager.LoadCustomSprite 内の new Texture2D(2,2) 一時テクスチャも ScaleTexture 後に放置されていた。
-    /// 2. 本パッチではカーソル用スケールテクスチャをソース WeakReference + 強参照 Texture2D で管理し、
-    ///    ソース破棄時 (PruneDeadReferences) や上限超過時に明示的に UnityEngine.Object.Destroy を呼んでネイティブメモリを解放する。
+    /// 【安全なライフサイクル設計 (v0.7.5)】
+    /// プレイ中はキャッシュを保持して毎フレームの ScaleTexture リークを遮断し、
+    /// シーン遷移時またはゲーム終了時に ClearAllAndDestroy で安全に解放する。
     /// </summary>
     public static class CursorLeakPatch
     {
@@ -51,13 +48,7 @@ namespace LobotomyModernEngine.Patches
             }
         }
 
-        private class CachedCursorEntry
-        {
-            public WeakReference SourceTexRef;
-            public Texture2D ScaledTexture;
-        }
-
-        private static readonly Dictionary<CursorScaleKey, CachedCursorEntry> ScaledCursorCache = new Dictionary<CursorScaleKey, CachedCursorEntry>(64);
+        private static readonly Dictionary<CursorScaleKey, Texture2D> ScaledCursorCache = new Dictionary<CursorScaleKey, Texture2D>(64);
 
         private static Texture2D _lastBaseCursorTex;
         private static int _lastScaledWidth = -1;
@@ -67,47 +58,16 @@ namespace LobotomyModernEngine.Patches
         public static long DestroyedCursorTexCount = 0;
         public static int CachedCursorTextureCount => ScaledCursorCache.Count;
 
-        public static void PruneDeadReferences()
-        {
-            if (ScaledCursorCache.Count == 0) return;
-
-            List<CursorScaleKey> deadKeys = null;
-            foreach (var kvp in ScaledCursorCache)
-            {
-                var entry = kvp.Value;
-                Texture2D src = entry.SourceTexRef != null ? (entry.SourceTexRef.Target as Texture2D) : null;
-                if (src == null || entry.ScaledTexture == null)
-                {
-                    if (deadKeys == null) deadKeys = new List<CursorScaleKey>();
-                    deadKeys.Add(kvp.Key);
-                }
-            }
-
-            if (deadKeys != null)
-            {
-                for (int i = 0; i < deadKeys.Count; i++)
-                {
-                    var key = deadKeys[i];
-                    if (ScaledCursorCache.TryGetValue(key, out var entry))
-                    {
-                        if (entry.ScaledTexture != null)
-                        {
-                            UnityEngine.Object.Destroy(entry.ScaledTexture);
-                            DestroyedCursorTexCount++;
-                        }
-                        ScaledCursorCache.Remove(key);
-                    }
-                }
-            }
-        }
-
+        /// <summary>
+        /// シーン遷移時または終了時に安全に全解放
+        /// </summary>
         public static void ClearAllAndDestroy()
         {
             foreach (var kvp in ScaledCursorCache)
             {
-                if (kvp.Value.ScaledTexture != null)
+                if (kvp.Value != null)
                 {
-                    UnityEngine.Object.Destroy(kvp.Value.ScaledTexture);
+                    UnityEngine.Object.Destroy(kvp.Value);
                     DestroyedCursorTexCount++;
                 }
             }
@@ -210,19 +170,13 @@ namespace LobotomyModernEngine.Patches
                     Mipmap = mipmap
                 };
 
-                if (ScaledCursorCache.TryGetValue(__state, out var entry))
+                if (ScaledCursorCache.TryGetValue(__state, out var cachedTex))
                 {
-                    Texture2D cachedSrc = entry.SourceTexRef != null ? (entry.SourceTexRef.Target as Texture2D) : null;
-                    if (object.ReferenceEquals(cachedSrc, source) && cachedSrc != null && entry.ScaledTexture != null)
+                    if (cachedTex != null)
                     {
                         AvoidedCursorTexAllocations++;
-                        __result = entry.ScaledTexture;
+                        __result = cachedTex;
                         return false;
-                    }
-                    if (entry.ScaledTexture != null && !object.ReferenceEquals(entry.ScaledTexture, source))
-                    {
-                        UnityEngine.Object.Destroy(entry.ScaledTexture);
-                        DestroyedCursorTexCount++;
                     }
                     ScaledCursorCache.Remove(__state);
                 }
@@ -244,11 +198,7 @@ namespace LobotomyModernEngine.Patches
 
                 if (!ScaledCursorCache.ContainsKey(__state) && !object.ReferenceEquals(__result, source))
                 {
-                    ScaledCursorCache[__state] = new CachedCursorEntry
-                    {
-                        SourceTexRef = new WeakReference(source),
-                        ScaledTexture = __result
-                    };
+                    ScaledCursorCache[__state] = __result;
                 }
             }
         }
