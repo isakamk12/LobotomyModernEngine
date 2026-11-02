@@ -9,6 +9,12 @@ namespace LobotomyModernEngine.Patches
     /// <summary>
     /// SefiraPanel の CreaturePortrait.UpdateCheck() が毎フレーム Resources.Load を呼び、
     /// かつ無条件で UI Canvas Dirty を引き起こす病巣を Dirty チェック＆キャッシュ化するパッチ
+    /// 
+    /// 【Dirtyフラグ完全性設計 (v0.7.4 監査硬化)】
+    /// - 対象 CreatureModel の ID / インスタンス
+    /// - 観測状態・ツール使用回数/時間・観測コスト
+    /// - リスクレベル・portraitSrcForcely・部門カラー (sefiraColor)
+    /// を全て含めたハッシュで比較し、バニラ SetCreature / SetEmpty と完全に整合する。
     /// </summary>
     [HarmonyPatch(typeof(SefiraPanel.CreaturePortrait))]
     public static class SefiraPanelPatch
@@ -18,6 +24,8 @@ namespace LobotomyModernEngine.Patches
 
         // 各スロットごとの前回状態キャッシュ（世代管理対応）
         private static readonly Dictionary<int, SlotCache> Cache = new Dictionary<int, SlotCache>();
+
+        public static long AvoidedSefiraPortraitUpdates = 0;
 
         private class SlotCache
         {
@@ -38,7 +46,7 @@ namespace LobotomyModernEngine.Patches
         public static Sprite GetPortraitSprite(string path)
         {
             if (string.IsNullOrEmpty(path)) return GetNoDataSprite();
-            if (!PortraitCache.TryGetValue(path, out var sprite))
+            if (!PortraitCache.TryGetValue(path, out var sprite) || sprite == null)
             {
                 sprite = Resources.Load<Sprite>(path);
                 if (sprite != null) PortraitCache[path] = sprite;
@@ -51,6 +59,18 @@ namespace LobotomyModernEngine.Patches
             Cache.Clear();
             PortraitCache.Clear();
             _cachedNoDataSprite = null;
+        }
+
+        [HarmonyPatch("SetEmpty")]
+        [HarmonyPostfix]
+        public static void Postfix_SetEmpty(SefiraPanel.CreaturePortrait __instance)
+        {
+            if (__instance == null) return;
+            int id = __instance.GetHashCode();
+            if (Cache.TryGetValue(id, out var slot))
+            {
+                slot.Initialized = false;
+            }
         }
 
         [HarmonyPatch("UpdateCheck")]
@@ -71,11 +91,12 @@ namespace LobotomyModernEngine.Patches
                 Cache[id] = slot;
             }
 
-            // 観測状態のハッシュ値を計算（変化したかどうかの判定）
-            int currentHash = ComputeObserveHash(___creature);
+            // アブノーマリティID・観測状態・カラーを含めた完全ハッシュ値を計算
+            int currentHash = ComputeObserveHash(___creature, ___sefiraColor);
             if (slot.Initialized && slot.LastObserveStateHash == currentHash)
             {
-                // 観測状態に変化がなければ、毎フレームの Resources.Load も Canvas Dirty 代入も完全スキップ！
+                AvoidedSefiraPortraitUpdates++;
+                // 観測状態・対象に変化がなければ、毎フレームの Resources.Load も Canvas Dirty 代入も完全スキップ
                 return false;
             }
 
@@ -87,16 +108,31 @@ namespace LobotomyModernEngine.Patches
             return false;
         }
 
-        private static int ComputeObserveHash(CreatureModel creature)
+        private static int ComputeObserveHash(CreatureModel creature, Color sefiraColor)
         {
-            if (creature.observeInfo == null) return 0;
-            if (creature.metaInfo.creatureWorkType == CreatureWorkType.KIT)
+            if (creature == null || creature.metaInfo == null || creature.observeInfo == null) return 0;
+            unchecked
             {
-                return creature.metaInfo.creatureKitType == CreatureKitType.ONESHOT
-                    ? creature.observeInfo.totalKitUseCount
-                    : (int)creature.observeInfo.totalKitUseTime;
+                int hash = 17;
+                hash = hash * 31 + (int)creature.instanceId;
+                hash = hash * 31 + (int)creature.metadataId;
+                hash = hash * 31 + (int)creature.metaInfo.GetRiskLevel();
+                hash = hash * 31 + ((int)(sefiraColor.r * 255f) ^ ((int)(sefiraColor.g * 255f) << 8) ^ ((int)(sefiraColor.b * 255f) << 16));
+
+                if (creature.metaInfo.creatureWorkType == CreatureWorkType.KIT)
+                {
+                    int observeCost = creature.observeInfo.GetObserveCost(CreatureModel.regionName[0]);
+                    bool isObserved = creature.metaInfo.creatureKitType == CreatureKitType.ONESHOT
+                        ? (creature.observeInfo.totalKitUseCount >= observeCost)
+                        : ((int)creature.observeInfo.totalKitUseTime >= observeCost);
+                    hash = hash * 31 + (isObserved ? 1 : 0);
+                }
+                else
+                {
+                    hash = hash * 31 + (creature.observeInfo.GetObserveState(CreatureModel.regionName[0]) ? 1 : 0);
+                }
+                return hash;
             }
-            return creature.observeInfo.GetObserveState(CreatureModel.regionName[0]) ? 1 : 0;
         }
 
         private static void ApplyPortraitUpdate(SefiraPanel.CreaturePortrait portraitSlot, CreatureModel creature, Color sefiraColor)

@@ -1,16 +1,20 @@
 using System;
 using System.Collections.Generic;
+using Customizing;
 using HarmonyLib;
 using UnityEngine;
+using WorkerSprite;
 
 namespace LobotomyModernEngine.Patches
 {
     /// <summary>
     /// WorkerPortraitSetter.LateUpdate の毎フレーム全再構築スパム抑止パッチ
-    /// バニラでは職員ポートレートUIが表示されている間、毎フレーム LateUpdate() で SetWorker(model) を呼び出し、
-    /// 毎フレーム3個の new List<EGOgiftModel>() アロケーションと20部位以上の UI Image 再設定を繰り返していた。
-    /// 本パッチでは WorkerModel の表示状態ハッシュ（装備・ギフト・顔・部門・生存/パニック）を計算し、
-    /// 変化がないフレームは LateUpdate での再構築を完全スキップする。
+    /// 
+    /// 【Dirtyフラグ完全性設計 (v0.7.4 監査硬化)】
+    /// バニラの SetWorker(worker) が参照する「すべての視覚状態（装備・ギフト・顔スプライト・髪色/瞳色・防具全14部位スプライト・
+    /// 死亡/パニック/制御不能・所属部門・勤続ランク・WeaponSet）」を網羅したシグネチャを計算し、
+    /// 1つでも変化したフレームは即座に再描画、変化がないフレームのみ LateUpdate 再構築をスキップする。
+    /// さらに SetArmor / SetCustomizing で外部から直接書き換えられた際はキャッシュを即座に無効化する。
     /// </summary>
     [HarmonyPatch(typeof(WorkerPortraitSetter))]
     public static class WorkerPortraitPatch
@@ -26,6 +30,7 @@ namespace LobotomyModernEngine.Patches
         private static readonly Dictionary<int, PortraitState> Cache = new Dictionary<int, PortraitState>(64);
 
         public static long AvoidedPortraitRebuilds = 0;
+        public static long ExecutedPortraitRebuilds = 0;
 
         public static void ClearCache()
         {
@@ -66,6 +71,18 @@ namespace LobotomyModernEngine.Patches
             return state;
         }
 
+        private static int ColorToHash(Color c)
+        {
+            unchecked
+            {
+                int r = (int)(c.r * 255f) & 0xFF;
+                int g = (int)(c.g * 255f) & 0xFF;
+                int b = (int)(c.b * 255f) & 0xFF;
+                int a = (int)(c.a * 255f) & 0xFF;
+                return (r << 24) | (g << 16) | (b << 8) | a;
+            }
+        }
+
         private static int ComputeWorkerVisualHash(WorkerPortraitSetter setter, WorkerModel worker)
         {
             if (worker == null) return 0;
@@ -73,17 +90,29 @@ namespace LobotomyModernEngine.Patches
             unchecked
             {
                 int hash = 17;
+                // 1. 生存・パニック・制御不能状態・死因タイプ
                 hash = hash * 31 + (worker.IsDead() ? 1 : 0);
                 hash = hash * 31 + (worker.IsPanic() ? 1 : 0);
+                hash = hash * 31 + (worker.CannotControll() ? 1 : 0);
+                hash = hash * 31 + (int)worker.DeadType;
                 hash = hash * 31 + (setter.WeaponSet ? 1 : 0);
 
+                // 2. 装備（武器・防具・スクリプト・武器スプライト・全ギフトのID＋表示/非表示＋部位）
                 var equip = worker.Equipment;
                 if (equip != null)
                 {
                     int armorId = (equip.armor != null && equip.armor.metaInfo != null) ? equip.armor.metaInfo.id : -1;
+                    int armorSpriteId = (equip.armor != null && equip.armor.metaInfo != null) ? equip.armor.metaInfo.armorId : -1;
                     int weaponId = (equip.weapon != null && equip.weapon.metaInfo != null) ? equip.weapon.metaInfo.id : -1;
+                    int weaponType = (equip.weapon != null && equip.weapon.metaInfo != null) ? (int)equip.weapon.metaInfo.weaponClassType : -1;
+                    int weaponSpriteHash = (equip.weapon != null && equip.weapon.metaInfo != null && equip.weapon.metaInfo.sprite != null)
+                        ? equip.weapon.metaInfo.sprite.GetHashCode() : 0;
+
                     hash = hash * 31 + armorId;
+                    hash = hash * 31 + armorSpriteId;
                     hash = hash * 31 + weaponId;
+                    hash = hash * 31 + weaponType;
+                    hash = hash * 31 + weaponSpriteHash;
 
                     var gifts = equip.gifts;
                     if (gifts != null)
@@ -120,6 +149,7 @@ namespace LobotomyModernEngine.Patches
                     }
                 }
 
+                // 3. 顔パーツ・髪色/瞳色・防具パーツの実スプライト参照
                 var spriteData = worker.spriteData;
                 if (spriteData != null)
                 {
@@ -128,6 +158,20 @@ namespace LobotomyModernEngine.Patches
                     hash = hash * 31 + (spriteData.Mouth != null ? spriteData.Mouth.GetInstanceID() : 0);
                     hash = hash * 31 + (spriteData.FrontHair != null ? spriteData.FrontHair.GetInstanceID() : 0);
                     hash = hash * 31 + (spriteData.RearHair != null ? spriteData.RearHair.GetInstanceID() : 0);
+                    hash = hash * 31 + ColorToHash(spriteData.EyeColor);
+                    hash = hash * 31 + ColorToHash(spriteData.HairColor);
+
+                    // 防具スプライト実体 (GetArmorData 更新検知)
+                    hash = hash * 31 + (spriteData.Armor.Body != null ? spriteData.Armor.Body.GetInstanceID() : 0);
+                    hash = hash * 31 + (spriteData.Armor.Coat_Back != null ? spriteData.Armor.Coat_Back.GetInstanceID() : 0);
+                    hash = hash * 31 + (spriteData.Armor.Left_Hand != null ? spriteData.Armor.Left_Hand.GetInstanceID() : 0);
+                    hash = hash * 31 + (spriteData.Armor.Right_Hand != null ? spriteData.Armor.Right_Hand.GetInstanceID() : 0);
+                }
+
+                // 4. 所属部門・セフィラ・連続勤務レベル（腕章シンボル）
+                if (worker.currentSefira != null)
+                {
+                    hash = hash * 31 + worker.currentSefira.GetHashCode();
                 }
 
                 if (worker is AgentModel agent)
@@ -158,6 +202,28 @@ namespace LobotomyModernEngine.Patches
             state.LastWorkerInstanceId = (int)worker.instanceId;
             state.LastStateHash = ComputeWorkerVisualHash(__instance, worker);
             state.Initialized = true;
+            ExecutedPortraitRebuilds++;
+        }
+
+        /// <summary>
+        /// SetArmor / SetCustomizing が直接呼ばれた場合はキャッシュを無効化し、次回 SetWorker で確実に再構築させる
+        /// </summary>
+        [HarmonyPatch("SetArmor", new Type[] { typeof(EquipmentTypeInfo) })]
+        [HarmonyPostfix]
+        public static void Postfix_SetArmor(WorkerPortraitSetter __instance)
+        {
+            if (__instance == null) return;
+            var state = GetOrCreateState(__instance);
+            state.Initialized = false;
+        }
+
+        [HarmonyPatch("SetCustomizing", new Type[] { typeof(AgentData), typeof(WorkerFaceType) })]
+        [HarmonyPostfix]
+        public static void Postfix_SetCustomizing(WorkerPortraitSetter __instance)
+        {
+            if (__instance == null) return;
+            var state = GetOrCreateState(__instance);
+            state.Initialized = false;
         }
 
         [HarmonyPatch("LateUpdate")]
@@ -174,7 +240,7 @@ namespace LobotomyModernEngine.Patches
             if (state.Initialized && state.LastWorkerInstanceId == currentWorkerId && state.LastStateHash == currentHash)
             {
                 AvoidedPortraitRebuilds++;
-                return false; // 装備・ギフト・顔・部門に変化がないため毎フレームの SetWorker 再構築をスキップ
+                return false; // 全表示要素に変化がないため毎フレームの SetWorker 再構築をスキップ
             }
 
             return true;

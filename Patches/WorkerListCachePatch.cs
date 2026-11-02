@@ -5,9 +5,16 @@ using HarmonyLib;
 namespace LobotomyModernEngine.Patches
 {
     /// <summary>
-    /// v0.5.0: AgentManager.GetAgentList / GetAgentSpareList および OfficerManager.GetOfficerList が
+    /// v0.5.0 / v0.7.4: AgentManager.GetAgentList / GetAgentSpareList および OfficerManager.GetOfficerList が
     /// 毎回の呼び出しで list.AsReadOnly() による ReadOnlyCollection ラッパーをヒープ確保する問題を解消する。
-    /// 80箇所以上の Update / FixedUpdate ループからの呼び出しを完全ゼロアロケーション化する。
+    /// 
+    /// 【不変性・安全性検証 (Assembly-CSharp.dll 実機解析)】
+    /// バニラの元メソッド自体が `return agentList.AsReadOnly();` (`ReadOnlyCollection<T>`) を返しており、
+    /// 最初から変更不可能なラッパー（呼び出し側が Add/Remove すると NotSupportedException を投げる設計）となっている。
+    /// また ReadOnlyCollection<T> は内部の List<T> 参照をラップするビューであるため、
+    /// agentList に要素が追加・削除されてもラッパーを再生成する必要はなく、
+    /// AgentManager.InitValues() / OfficerManager.Init() で内部 List インスタンス自体が差し替わった時のみ
+    /// ReferenceEquals チェックによって自動的に新しい ReadOnlyCollection ラッパーへ更新される。
     /// </summary>
     public static class WorkerListCachePatch
     {

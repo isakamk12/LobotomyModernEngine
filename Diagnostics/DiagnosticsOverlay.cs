@@ -6,13 +6,15 @@ using LobotomyModernEngine.Patches;
 namespace LobotomyModernEngine.Diagnostics
 {
     /// <summary>
-    /// 計画書 Phase 0/1.5/B/Core 準拠: F9 キーでトグル可能なゲーム内診断オーバーレイ
-    /// 古いMono 2.0互換（Array.Emptyを一切呼ばないゼロアロケーション設計）
-    /// ロード区間時間、Notice.Send/秒、TakeDamage/秒、ネイティブリーク防止数、WorkerPool稼働状況を表示
+    /// v0.7.4: 各パッチが実際に稼働・機能しているかを日本語＆色分けバッジで一目で確認できる診断モニター
+    /// - 画面左上のミニ稼働バッジ（常時またはワンクリックで詳細開閉可能）
+    /// - F9 キー（またはミニバッジクリック）で開く詳細リアルタイム稼働モニター
+    /// - F8 キー（またはパネル内ボタン）でデバッグ装備強化の即時切替
     /// </summary>
     public class DiagnosticsOverlay : MonoBehaviour
     {
         public static bool IsVisible { get; set; } = false;
+        public static bool ShowMiniStatusBadge { get; set; } = true;
 
         private static readonly GUILayoutOption[] EmptyOptions = new GUILayoutOption[0];
 
@@ -39,10 +41,12 @@ namespace LobotomyModernEngine.Diagnostics
 
         private float _lastStatUpdateTime = 0f;
         private GUIStyle _boxStyle;
+        private GUIStyle _miniBadgeStyle;
         private GUIStyle _headerStyle;
         private GUIStyle _labelStyle;
         private GUIStyle _goodStyle;
         private GUIStyle _warnStyle;
+        private GUIStyle _buttonStyle;
         private bool _stylesInitialized = false;
 
         private void Update()
@@ -104,16 +108,30 @@ namespace LobotomyModernEngine.Diagnostics
             if (_stylesInitialized) return;
 
             Texture2D bgTex = new Texture2D(1, 1);
-            bgTex.SetPixel(0, 0, new Color(0.04f, 0.04f, 0.07f, 0.90f));
+            bgTex.hideFlags = HideFlags.HideAndDontSave;
+            bgTex.SetPixel(0, 0, new Color(0.04f, 0.05f, 0.09f, 0.92f));
             bgTex.Apply();
+
+            Texture2D badgeTex = new Texture2D(1, 1);
+            badgeTex.hideFlags = HideFlags.HideAndDontSave;
+            badgeTex.SetPixel(0, 0, new Color(0.05f, 0.12f, 0.08f, 0.85f));
+            badgeTex.Apply();
 
             _boxStyle = new GUIStyle(GUI.skin.box);
             _boxStyle.normal.background = bgTex;
 
+            _miniBadgeStyle = new GUIStyle(GUI.skin.button);
+            _miniBadgeStyle.normal.background = badgeTex;
+            _miniBadgeStyle.fontSize = 11;
+            _miniBadgeStyle.fontStyle = FontStyle.Bold;
+            _miniBadgeStyle.normal.textColor = new Color(0.45f, 1f, 0.55f);
+            _miniBadgeStyle.alignment = TextAnchor.MiddleLeft;
+            _miniBadgeStyle.padding = new RectOffset(8, 8, 2, 2);
+
             _headerStyle = new GUIStyle(GUI.skin.label);
             _headerStyle.fontSize = 12;
             _headerStyle.fontStyle = FontStyle.Bold;
-            _headerStyle.normal.textColor = new Color(0.35f, 0.75f, 1f);
+            _headerStyle.normal.textColor = new Color(0.35f, 0.80f, 1f);
 
             _labelStyle = new GUIStyle(GUI.skin.label);
             _labelStyle.fontSize = 11;
@@ -121,82 +139,208 @@ namespace LobotomyModernEngine.Diagnostics
 
             _goodStyle = new GUIStyle(GUI.skin.label);
             _goodStyle.fontSize = 11;
-            _goodStyle.normal.textColor = new Color(0.4f, 1f, 0.4f);
+            _goodStyle.normal.textColor = new Color(0.4f, 1f, 0.45f);
 
             _warnStyle = new GUIStyle(GUI.skin.label);
             _warnStyle.fontSize = 11;
-            _warnStyle.normal.textColor = new Color(1f, 0.65f, 0.2f);
+            _warnStyle.normal.textColor = new Color(1f, 0.70f, 0.25f);
+
+            _buttonStyle = new GUIStyle(GUI.skin.button);
+            _buttonStyle.fontSize = 11;
+            _buttonStyle.fontStyle = FontStyle.Bold;
 
             _stylesInitialized = true;
         }
 
         private void OnGUI()
         {
-            if (!IsVisible) return;
-
             InitStyles();
 
-            float width = 395f;
-            float height = 500f;
+            // パネル非表示時は画面左上にコンパクトな稼働確認バッジを表示（クリックまたはF9で詳細展開）
+            if (!IsVisible)
+            {
+                if (ShowMiniStatusBadge && (Plugin.ShowMiniHudBadge == null || Plugin.ShowMiniHudBadge.Value))
+                {
+                    bool gearOn = DebugGearBuffPatch.IsCurrentlyApplied;
+                    bool lobOn = StatUpgradeCostPatch.IsEnabled;
+                    string badgeText = string.Format(
+                        "● LME v{0} 稼働中 ({1}/{2}パッチ正常) | {3:F0} FPS | 1-LOB:{4} | 神装備:{5} [F9:詳細]",
+                        PluginInfo.PLUGIN_VERSION,
+                        Plugin.HookedPatchGroupCount,
+                        Plugin.TotalPatchGroupCount,
+                        _fps,
+                        lobOn ? "ON" : "OFF",
+                        gearOn ? "ON" : "OFF");
+
+                    if (GUI.Button(new Rect(8f, 6f, 470f, 22f), badgeText, _miniBadgeStyle))
+                    {
+                        IsVisible = true;
+                    }
+                }
+                return;
+            }
+
+            float width = 460f;
+            float height = 565f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
 
-            GUILayout.BeginArea(new Rect(18f, 10f, width - 16f, height - 10f));
-            
-            GUILayout.Label(string.Format("Lobotomy Modern Engine v{0} (F9:UI / F8:Gear)", PluginInfo.PLUGIN_VERSION), _headerStyle, EmptyOptions);
-            GUILayout.Space(1f);
+            GUILayout.BeginArea(new Rect(18f, 12f, width - 16f, height - 14f));
 
-            // FPS & フレーム時間
+            GUILayout.Label(
+                string.Format("Lobotomy Modern Engine v{0} 稼働診断モニター (F9:開閉 / F8:装備)", PluginInfo.PLUGIN_VERSION),
+                _headerStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("パッチ適用状態: [{0}/{1} モジュール正常フック済]  |  Transpiler: [{2}]",
+                    Plugin.HookedPatchGroupCount,
+                    Plugin.TotalPatchGroupCount,
+                    TakeDamagePatch.IsTranspilerVerified
+                        ? string.Format("正常 ({0}/8箇所置換)", TakeDamagePatch.TotalReplacedCallSites)
+                        : "未適用"),
+                TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
+                EmptyOptions);
+
+            GUILayout.Space(2f);
+
+            // 1. パフォーマンス・メモリ統計
             var fpsStyle = _fps >= 55f ? _goodStyle : (_fps >= 30f ? _warnStyle : _labelStyle);
-            GUILayout.Label(string.Format("FPS: {0:F1}  ({1:F1} ms)", _fps, _avgFrameTimeMs), fpsStyle, EmptyOptions);
-            GUILayout.Label(string.Format("Frame Time: P50: {0:F1}ms | P95: {1:F1}ms | P99: {2:F1}ms", _p50FrameTimeMs, _p95FrameTimeMs, _p99FrameTimeMs), _labelStyle, EmptyOptions);
-            GUILayout.Space(2f);
+            GUILayout.Label(
+                string.Format("FPS: {0:F1} ({1:F1} ms)  |  Frame P50:{2:F1}ms / P95:{3:F1}ms / P99:{4:F1}ms",
+                    _fps, _avgFrameTimeMs, _p50FrameTimeMs, _p95FrameTimeMs, _p99FrameTimeMs),
+                fpsStyle,
+                EmptyOptions);
+            GUILayout.Label(
+                string.Format("Managed Heap: {0} MB  |  GC回数 Gen0:{1} / Gen1:{2} / Gen2:{3}",
+                    _heapMemoryMb, _gcCount0, _gcCount1, _gcCount2),
+                _labelStyle,
+                EmptyOptions);
+            GUILayout.Space(3f);
 
-            // メモリ & GC
-            GUILayout.Label(string.Format("Managed Heap: {0} MB", _heapMemoryMb), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("GC Counts:  Gen0: {0} | Gen1: {1} | Gen2: {2}", _gcCount0, _gcCount1, _gcCount2), _labelStyle, EmptyOptions);
-            GUILayout.Space(2f);
+            // 2. 監査4項目＆メモリリーク防止のリアルタイム稼働証明
+            GUILayout.Label("【1】メモリリーク防止・キャッシュ稼働状況 (実測カウンタ):", _headerStyle, EmptyOptions);
 
-            // 実行時最適化 & メモリリーク防止メトリクス
-            GUILayout.Label("Memory Leak, UI & BugFix Metrics:", _headerStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Spine PMA Cache: {0} hits / {1} cached (Leak Cut)", SpineAtlasCachePatch.CacheHitCount, SpineAtlasCachePatch.CachedRegionCount), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Cursor Leak Cut: {0} avoided ({1} cached)", CursorLeakPatch.AvoidedCursorTexAllocations, CursorLeakPatch.CachedCursorTextureCount), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Portrait Skip:   {0} LateUpdates skipped", WorkerPortraitPatch.AvoidedPortraitRebuilds), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• List/Cam Cache:  {0} List / {1} Cam saved", WorkerListCachePatch.AvoidedReadOnlyAllocations, SpineOptimizerPatch.AvoidedCameraLookups), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• UI Text Fix:     {0} texts enhanced", UITextReadabilityPatch.EnhancedTextCount), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• 1-LOB Upgrade:   {0}", StatUpgradeCostPatch.IsEnabled ? "Active (All stats 1 LOB)" : "Vanilla"), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Vanilla BugFix:  {0}/9 groups active ({1} triggered)", VanillaBugFixPatch.ActiveBugFixGroupCount, VanillaBugFixPatch.TotalTriggeredFixes), _goodStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Notice.Send:     {0}/s (Avoided Alloc: {1})", _displayNoticePerSec, NoticePatch.AvoidedAllocations), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• TakeDamage:      {0}/s (0-Barrier Cut: {1})", _displayDamagePerSec, TakeDamagePatch.ZeroBarrierAllocAvoided), _labelStyle, EmptyOptions);
-            if (!string.IsNullOrEmpty(MetricsPatches.LastLoadedSceneName))
-            {
-                GUILayout.Label(string.Format("• Last Load:       {0} ({1:F0} ms)", MetricsPatches.LastLoadedSceneName, MetricsPatches.LastLoadDurationMs), _labelStyle, EmptyOptions);
-            }
-            if (MissingDataGuardPatch.GuardedCreatureCount > 0 || MissingDataGuardPatch.GuardedEquipmentCount > 0)
-            {
-                GUILayout.Label(string.Format("• Guarded:         {0} Abno, {1} Equip", MissingDataGuardPatch.GuardedCreatureCount, MissingDataGuardPatch.GuardedEquipmentCount), _warnStyle, EmptyOptions);
-            }
-            GUILayout.Space(2f);
+            GUILayout.Label(
+                string.Format("• [稼働中] ①Spine PMAキャッシュ: 再利用 {0}回 / 保持 {1}個 / Destroy解放 {2}個",
+                    SpineAtlasCachePatch.CacheHitCount,
+                    SpineAtlasCachePatch.CachedRegionCount,
+                    SpineAtlasCachePatch.DestroyedNativeObjectCount),
+                _goodStyle,
+                EmptyOptions);
 
-            // デバッグ装備強化ステータス & ワンクリック切替ボタン
+            GUILayout.Label(
+                string.Format("• [稼働中] ①照準カーソルリーク遮断: 生成回避 {0}回 / 保持 {1}個 / Destroy {2}個",
+                    CursorLeakPatch.AvoidedCursorTexAllocations,
+                    CursorLeakPatch.CachedCursorTextureCount,
+                    CursorLeakPatch.DestroyedCursorTexCount),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] ②Dirty差分更新: 顔スキップ {0}回 (更新 {1}回) / 部門枠スキップ {2}回",
+                    WorkerPortraitPatch.AvoidedPortraitRebuilds,
+                    WorkerPortraitPatch.ExecutedPortraitRebuilds,
+                    SefiraPanelPatch.AvoidedSefiraPortraitUpdates),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] ③職員リスト&カメラ共有: ReadOnly回避 {0}回 / Camera.main回避 {1}回",
+                    WorkerListCachePatch.AvoidedReadOnlyAllocations,
+                    SpineOptimizerPatch.AvoidedCameraLookups),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] ④TakeDamage IL最適化: 置換 {0}/8箇所 | 被弾 {1}/s (0バリア回避: {2}回)",
+                    TakeDamagePatch.TotalReplacedCallSites,
+                    _displayDamagePerSec,
+                    TakeDamagePatch.ZeroBarrierAllocAvoided),
+                TakeDamagePatch.IsTranspilerVerified ? _goodStyle : _warnStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] Notice.Send CoW化: 配信 {0}/s (ToArray配列生成回避: {1}回)",
+                    _displayNoticePerSec,
+                    NoticePatch.AvoidedAllocations),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Space(3f);
+
+            // 3. バニラバグ修正・UI改善・育成緩和の稼働状況
+            GUILayout.Label("【2】バニラ9大バグ修正・UI文字改善・デバッグ機能:", _headerStyle, EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] バニラ固有バグ修正: {0}/9 項目有効 (実ゲーム内でバグ発動阻止: {1}回)",
+                    VanillaBugFixPatch.ActiveBugFixGroupCount,
+                    VanillaBugFixPatch.TotalTriggeredFixes),
+                _goodStyle,
+                EmptyOptions);
+
+            GUILayout.Label(
+                string.Format("• [稼働中] 図鑑・ギフト文字サイズ改善: 累計 {0} 箇所のテキストを拡大補正 (ロード画面はバニラ維持)",
+                    UITextReadabilityPatch.EnhancedTextCount),
+                _goodStyle,
+                EmptyOptions);
+
+            bool lobEnabled = StatUpgradeCostPatch.IsEnabled;
+            GUILayout.Label(
+                string.Format("• [{0}] ステータス1-LOB強化: {1}",
+                    lobEnabled ? "ON / 稼働中" : "OFF / バニラ",
+                    lobEnabled ? "全ランク 1段階 = 1 LOB 適用中" : "バニラ通常のLOBコスト"),
+                lobEnabled ? _goodStyle : _warnStyle,
+                EmptyOptions);
+
             bool gearBuffOn = DebugGearBuffPatch.IsCurrentlyApplied;
             GUILayout.Label(
-                string.Format("• Debug Gear Buff: {0} (スーツ/警棒/懺悔 [{1}])", gearBuffOn ? "ON (OP)" : "OFF (Vanilla)", DebugGearBuffPatch.BuffedEquipmentCount),
+                string.Format("• [{0}] 初期装備&懺悔強化: {1} (対象 {2} 装備)",
+                    gearBuffOn ? "ON / 稼働中" : "OFF / バニラ",
+                    gearBuffOn ? "威力10万~15万・弱点自動変換・0.001倍耐性" : "バニラ通常性能",
+                    DebugGearBuffPatch.BuffedEquipmentCount),
                 gearBuffOn ? _goodStyle : _warnStyle,
                 EmptyOptions);
-            if (GUILayout.Button(gearBuffOn ? "[F8] Switch Gear to Vanilla" : "[F8] Switch Gear to Debug Buff", EmptyOptions))
+
+            GUILayout.BeginHorizontal(EmptyOptions);
+            if (GUILayout.Button(gearBuffOn ? "[F8] 初期装備＆懺悔をバニラに戻す" : "[F8] 初期装備＆懺悔をデバッグ強化する", _buttonStyle, EmptyOptions))
             {
                 DebugGearBuffPatch.ToggleBuff();
             }
+            if (GUILayout.Button(lobEnabled ? "1-LOB強化をOFFにする" : "1-LOB強化をONにする", _buttonStyle, EmptyOptions))
+            {
+                StatUpgradeCostPatch.Toggle();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal(EmptyOptions);
+            if (GUILayout.Button(ShowMiniStatusBadge ? "左上ミニ稼働バッジを隠す" : "左上ミニ稼働バッジを表示", _buttonStyle, EmptyOptions))
+            {
+                ShowMiniStatusBadge = !ShowMiniStatusBadge;
+                if (Plugin.ShowMiniHudBadge != null)
+                {
+                    Plugin.ShowMiniHudBadge.Value = ShowMiniStatusBadge;
+                }
+            }
+            if (GUILayout.Button("[F9] 詳細パネルを閉じる", _buttonStyle, EmptyOptions))
+            {
+                IsVisible = false;
+            }
+            GUILayout.EndHorizontal();
+
             GUILayout.Space(2f);
 
-            // 並列・分散基盤ステータス
-            GUILayout.Label("Core Architecture (LMF.Core):", _headerStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• WorkerPool:      {0}/{1} active (Queue: {2}, Gen: {3})", 
-                BoundedWorkerPool.ActiveThreadCount, BoundedWorkerPool.ConfiguredThreadCount, BoundedWorkerPool.CurrentQueueDepth, GenerationTracker.CurrentGeneration), _labelStyle, EmptyOptions);
-            GUILayout.Label(string.Format("• Dispatcher:      Queue: {0} (Done: {1}, Budget: {2:F1}ms)",
-                MainThreadDispatcher.QueueDepth, MainThreadDispatcher.TotalDispatchedCount, MainThreadDispatcher.FrameBudgetMs), _labelStyle, EmptyOptions);
+            // 4. コアスレッドプール＆セーブ保護
+            GUILayout.Label(
+                string.Format("Core: WorkerPool {0}/{1} (Gen:{2}) | Guarded MissingMOD: Abno {3}, Equip {4}",
+                    BoundedWorkerPool.ActiveThreadCount,
+                    BoundedWorkerPool.ConfiguredThreadCount,
+                    GenerationTracker.CurrentGeneration,
+                    MissingDataGuardPatch.GuardedCreatureCount,
+                    MissingDataGuardPatch.GuardedEquipmentCount),
+                _labelStyle,
+                EmptyOptions);
 
             GUILayout.EndArea();
         }

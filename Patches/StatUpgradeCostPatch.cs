@@ -8,16 +8,26 @@ namespace LobotomyModernEngine.Patches
 {
     /// <summary>
     /// 職員のステータス強化（勇気・慎重・自制・正義）に必要なLOBポイントを一律1にするパッチ。
-    /// 1段階強化するごとに消費コストが「1 LOB」になる。ConfigでON/OFF切り替え可能。
+    /// 1段階強化するごとに消費コストが「1 LOB」になる。ConfigまたはF9画面で即時ON/OFF切り替え可能。
     /// </summary>
     public static class StatUpgradeCostPatch
     {
         private static readonly int[] CheapCostAry = new int[] { 0, 1, 1, 1, 1, 1, 1 };
+        private static readonly int[] VanillaRWB = new int[] { 0, 1, 2, 3, 4, 6 };
+        private static readonly int[] VanillaP = new int[] { 0, 3, 6, 9, 12, 18 };
 
         private static readonly FieldInfo _currentCostField = AccessTools.Field(typeof(StatUI.StatController), "_currentCost");
         private static readonly FieldInfo _statUIField = AccessTools.Field(typeof(StatUI.StatController), "statUI");
 
-        static StatUpgradeCostPatch()
+        public static bool IsEnabled
+        {
+            get
+            {
+                return Plugin.EnableCheapStatUpgrade != null && Plugin.EnableCheapStatUpgrade.Value;
+            }
+        }
+
+        public static void SyncStaticArrays()
         {
             if (IsEnabled)
             {
@@ -26,13 +36,28 @@ namespace LobotomyModernEngine.Patches
                 StatUI.BCost = CheapCostAry;
                 StatUI.PCost = CheapCostAry;
             }
+            else
+            {
+                StatUI.RCost = VanillaRWB;
+                StatUI.WCost = VanillaRWB;
+                StatUI.BCost = VanillaRWB;
+                StatUI.PCost = VanillaP;
+            }
         }
 
-        public static bool IsEnabled
+        public static void Toggle()
         {
-            get
+            if (Plugin.EnableCheapStatUpgrade == null) return;
+            Plugin.EnableCheapStatUpgrade.Value = !Plugin.EnableCheapStatUpgrade.Value;
+            SyncStaticArrays();
+
+            if (CustomizingWindow.CurrentWindow != null && CustomizingWindow.CurrentWindow.statUI != null)
             {
-                return Plugin.EnableCheapStatUpgrade == null || Plugin.EnableCheapStatUpgrade.Value;
+                var ui = CustomizingWindow.CurrentWindow.statUI;
+                if (ui.RStat != null) ui.RStat.SetCost();
+                if (ui.WStat != null) ui.WStat.SetCost();
+                if (ui.BStat != null) ui.BStat.SetCost();
+                if (ui.PStat != null) ui.PStat.SetCost();
             }
         }
 
@@ -41,11 +66,7 @@ namespace LobotomyModernEngine.Patches
         {
             public static void Prefix(StatUI __instance)
             {
-                if (!IsEnabled) return;
-                StatUI.RCost = CheapCostAry;
-                StatUI.WCost = CheapCostAry;
-                StatUI.BCost = CheapCostAry;
-                StatUI.PCost = CheapCostAry;
+                SyncStaticArrays();
             }
         }
 
