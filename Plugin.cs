@@ -42,6 +42,7 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> FixBlueStarArmorHeal;
         public static ConfigEntry<bool> FixBigBirdOverloadImmunity;
         public static ConfigEntry<bool> FixRedHoodWeaponRange;
+        public static ConfigEntry<bool> FixMovementSlowDebuffs;
         public static ConfigEntry<bool> EnableSpineAtlasCache;
         public static ConfigEntry<bool> EnableCursorLeakFix;
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
@@ -85,6 +86,7 @@ namespace LobotomyModernEngine
             FixBlueStarArmorHeal = Config.Bind("VanillaBugFix", "FixBlueStarArmorHeal", true, "一等星は常に嘘つきバグ修正 (蒼星防具の同空間回復で精神力だけでなく体力も5回復するよう修正)");
             FixBigBirdOverloadImmunity = Config.Bind("VanillaBugFix", "FixBigBirdOverloadImmunity", true, "効かないねぇ！大鳥だから！バグ修正 (大鳥がmaxWorkCount=0のためクリフォト暴走の対象外になっていたバグ修正)");
             FixRedHoodWeaponRange = Config.Bind("VanillaBugFix", "FixRedHoodWeaponRange", true, "紅の傷跡短小バグ＆インベントリ射程表記ズレ修正 (通常攻撃時に射程が4→3に縮むバグとインベントリ射程閾値バグ修正)");
+            FixMovementSlowDebuffs = Config.Bind("VanillaBugFix", "FixMovementSlowDebuffs", true, "氷のかけら・笑顔・失楽園等の移動速度デバフ修正 (調律者以外にも効くよう正常化、効果終了後の超加速暴走防止、試練エネミーの減速無効修正)");
             EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (表示状態Dirty検知＆所要時間計測)");
@@ -227,6 +229,15 @@ namespace LobotomyModernEngine
                     {
                         ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.RedHoodWeapon_SetNextAttackType_Patch), "VanillaBugFix (RedHood Weapon Normal Range 4f)");
                         ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.InventoryItemDescGetter_GetWeaponDesc_Patch), "VanillaBugFix (Inventory Weapon Range Threshold)");
+                        activeGroups++;
+                    }
+                    if (FixMovementSlowDebuffs.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.SnowQueenSlow_Patch), "VanillaBugFix (SnowQueen Slow Direct Scale Bypass)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DangoSlowNormal_Patch), "VanillaBugFix (Dango Normal Slow Direct Scale Bypass)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DangoSlowSpecial_Patch), "VanillaBugFix (Dango Special Slow Direct Scale Bypass)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.DeathAngelSlow_Patch), "VanillaBugFix (DeathAngel Slow Direct Scale Bypass)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.OrdealCreatureModel_OnFixedUpdate_Patch), "VanillaBugFix (Ordeal MovementScaleByBuf Apply)");
                         activeGroups++;
                     }
                     VanillaBugFixPatch.ActiveBugFixGroupCount = activeGroups;

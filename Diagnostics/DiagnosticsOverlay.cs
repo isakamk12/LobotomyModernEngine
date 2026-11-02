@@ -317,11 +317,11 @@ namespace LobotomyModernEngine.Diagnostics
             GUILayout.Space(3f);
 
             // 3. バニラバグ修正・UI改善・育成緩和の稼働状況
-            GUILayout.Label("【2】バニラ9大バグ修正・UI文字改善・デバッグ機能:", _headerStyle, EmptyOptions);
+            GUILayout.Label("【2】バニラ10大バグ修正・UI文字改善・デバッグ機能:", _headerStyle, EmptyOptions);
 
             bool bugfixActive = VanillaBugFixPatch.TotalTriggeredFixes > 0;
             GUILayout.Label(
-                string.Format("• [{0}] バニラ固有バグ修正: {1}/9 項目有効 (実ゲーム内でバグ発動阻止: {2}回)",
+                string.Format("• [{0}] バニラ固有バグ修正: {1}/10 項目有効 (実ゲーム内でバグ発動阻止: {2}回)",
                     bugfixActive ? "実働確認" : "パッチ適用済/待機中",
                     VanillaBugFixPatch.ActiveBugFixGroupCount,
                     VanillaBugFixPatch.TotalTriggeredFixes),

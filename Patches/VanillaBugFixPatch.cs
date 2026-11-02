@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using Inventory;
 using UnityEngine;
@@ -608,6 +609,186 @@ namespace LobotomyModernEngine.Patches
                 attackSpeed = InventoryItemDescGetter.GetText(InventoryItemDescGetter.AttackSpeedKey[spdIdx]);
                 attackRange = InventoryItemDescGetter.GetText(InventoryItemDescGetter.AttackRangeKey[rngIdx]);
                 return false;
+            }
+        }
+
+        // =========================================================================
+        // 10. 速度デバフ武器（氷のかけら・笑顔・失楽園等）＆試練エネミー移動速度不全バグ修正
+        //     - SnowQueenSlow, DangoCreatureWeaponSlow_Normal, DangoCreatureWeaponSlow_Special, DeathAngelWeaponSlow が
+        //       creature.movementScale を直接代入して上書きし、幻想体AIの毎フレーム固定値代入で1フレームで無効化され、
+        //       終了時に割り算して2倍・3倍に爆走暴走していたバグを修正（正規の GetMovementScaleByBuf() 乗算に一本化）。
+        //     - OrdealCreatureModel.OnFixedUpdate() に GetMovementScaleByBuf() が脱落し試練エネミーに全減速デバフが無効だったバグ修正。
+        // =========================================================================
+
+        [HarmonyPatch(typeof(SnowQueenSlow))]
+        public static class SnowQueenSlow_Patch
+        {
+            [HarmonyPatch("Init", new Type[] { typeof(UnitModel) })]
+            [HarmonyPrefix]
+            public static bool Prefix_Init(SnowQueenSlow __instance, UnitModel model)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                __instance.model = model;
+                __instance.remainTime = 3f;
+                TotalTriggeredFixes++;
+                return false; // creature.movementScale の直接代入を回避（GetMovementScaleByBuf が MovementScale() 0.5f を参照）
+            }
+
+            [HarmonyPatch("OnDestroy")]
+            [HarmonyPrefix]
+            public static bool Prefix_OnDestroy(SnowQueenSlow __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                return false; // creature.movementScale の除算（2倍爆走暴走）を回避
+            }
+        }
+
+        [HarmonyPatch(typeof(DangoCreatureWeaponSlow_Normal))]
+        public static class DangoSlowNormal_Patch
+        {
+            [HarmonyPatch("Init", new Type[] { typeof(UnitModel) })]
+            [HarmonyPrefix]
+            public static bool Prefix_Init(DangoCreatureWeaponSlow_Normal __instance, UnitModel model)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                __instance.model = model;
+                __instance.remainTime = 3f;
+                UnitBuf special = model.GetUnitBufByType(UnitBufType.DANGO_CREATURE_WEAPON_SLOW_SPECIAL);
+                if (special != null) special.Destroy();
+
+                TotalTriggeredFixes++;
+                return false;
+            }
+
+            [HarmonyPatch("OnDestroy")]
+            [HarmonyPrefix]
+            public static bool Prefix_OnDestroy(DangoCreatureWeaponSlow_Normal __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(DangoCreatureWeaponSlow_Special))]
+        public static class DangoSlowSpecial_Patch
+        {
+            [HarmonyPatch("Init", new Type[] { typeof(UnitModel) })]
+            [HarmonyPrefix]
+            public static bool Prefix_Init(DangoCreatureWeaponSlow_Special __instance, UnitModel model)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                __instance.model = model;
+                __instance.remainTime = 3f;
+                UnitBuf normal = model.GetUnitBufByType(UnitBufType.DANGO_CREATURE_WEAPON_SLOW_NORMAL);
+                if (normal != null) normal.Destroy();
+
+                TotalTriggeredFixes++;
+                return false;
+            }
+
+            [HarmonyPatch("OnDestroy")]
+            [HarmonyPrefix]
+            public static bool Prefix_OnDestroy(DangoCreatureWeaponSlow_Special __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(DeathAngelWeaponSlow))]
+        public static class DeathAngelSlow_Patch
+        {
+            [HarmonyPatch("Init", new Type[] { typeof(UnitModel) })]
+            [HarmonyPrefix]
+            public static bool Prefix_Init(DeathAngelWeaponSlow __instance, UnitModel model)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                __instance.model = model;
+                __instance.remainTime = 5f;
+                TotalTriggeredFixes++;
+                return false;
+            }
+
+            [HarmonyPatch("OnDestroy")]
+            [HarmonyPrefix]
+            public static bool Prefix_OnDestroy(DeathAngelWeaponSlow __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value)
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(OrdealCreatureModel), "OnFixedUpdate")]
+        public static class OrdealCreatureModel_OnFixedUpdate_Patch
+        {
+            private static readonly MethodInfo TargetProcessMoveNode = AccessTools.Method(typeof(MovableObjectNode), "ProcessMoveNode", new Type[] { typeof(float) });
+            private static readonly MethodInfo ReplacementMethod = AccessTools.Method(typeof(OrdealCreatureModel_OnFixedUpdate_Patch), nameof(ProcessMoveNodeWithBuf));
+
+            [HarmonyPrefix]
+            public static void Prefix(OrdealCreatureModel __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMovementSlowDebuffs == null || !Plugin.FixMovementSlowDebuffs.Value ||
+                    __instance == null)
+                    return;
+
+                // バニラで脱落していたバフ状態更新（減速デバフタイマー等）を実行
+                __instance.UpdateBufState();
+            }
+
+            public static void ProcessMoveNodeWithBuf(MovableObjectNode node, float baseSpeed, OrdealCreatureModel creature)
+            {
+                if (node == null) return;
+                float bufScale = creature != null ? creature.GetMovementScaleByBuf() : 1f;
+                if (bufScale < 0.99f)
+                {
+                    TotalTriggeredFixes++;
+                }
+                node.ProcessMoveNode(baseSpeed * bufScale);
+            }
+
+            [HarmonyTranspiler]
+            public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+                for (int i = 0; i < codes.Count; i++)
+                {
+                    var inst = codes[i];
+                    if (inst.opcode == OpCodes.Callvirt && inst.operand is MethodInfo mi && mi == TargetProcessMoveNode)
+                    {
+                        // ProcessMoveNode(float) -> ProcessMoveNodeWithBuf(node, float, this)
+                        // スタックにはすでに (MovableObjectNode node, float speed) が積まれているので ldarg.0 を追加して ReplacementMethod を呼ぶ
+                        codes.Insert(i, new CodeInstruction(OpCodes.Ldarg_0));
+                        inst.opcode = OpCodes.Call;
+                        inst.operand = ReplacementMethod;
+                        break;
+                    }
+                }
+                return codes;
             }
         }
     }
