@@ -65,6 +65,7 @@ namespace LobotomyModernEngine.Patches
         public static void ClearCache()
         {
             _dangoTargetAliveBeforeHit.Clear();
+            VoidDreamUnconSafety_Patch.ClearCache();
         }
 
         // =========================================================================
@@ -789,6 +790,264 @@ namespace LobotomyModernEngine.Patches
                     }
                 }
                 return codes;
+            }
+        }
+
+        // =========================================================================
+        // 【v0.7.7 武器関連バグ修正群】
+        // =========================================================================
+
+        /// <summary>
+        /// ① 黄昏の通常攻撃で最後の青属性（Pale）が出ないバグ修正
+        /// Spineイベントが3回しか鳴らずキューに残った4番目のPaleダメージをアニメーション完了直前に確実にディスパッチする。
+        /// </summary>
+        [HarmonyPatch(typeof(WorkerModel), "SpecialAttackEnd")]
+        public static class TwilightPaleAttack_Patch
+        {
+            private static readonly FieldInfo _currentDamageInfosField = AccessTools.Field(typeof(WeaponModel), "_currentDamageInfos");
+
+            [HarmonyPrefix]
+            public static void Prefix(WorkerModel __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixTwilightPaleAttack == null || !Plugin.FixTwilightPaleAttack.Value ||
+                    __instance == null || __instance.Equipment == null || __instance.Equipment.weapon == null)
+                    return;
+
+                var weapon = __instance.Equipment.weapon;
+                if (weapon.script is BossBirdWeapon)
+                {
+                    var queue = _currentDamageInfosField?.GetValue(weapon) as Queue<DamageInfo>;
+                    if (queue != null && queue.Count > 0)
+                    {
+                        while (queue.Count > 0)
+                        {
+                            weapon.OnGiveDamage(__instance);
+                            TotalTriggeredFixes++;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// ② 銀河の子武器がメイスなのに射程が銃並み（range=8）になっているバグ修正
+        /// 本来のメイス近接射程（range=3）に補正する。
+        /// </summary>
+        [HarmonyPatch(typeof(EquipmentTypeList), "GetData", new Type[] { typeof(int) })]
+        public static class ChildOfGalaxyRange_Patch
+        {
+            private const int GALAXY_WEAPON_ID = 200031;
+            private const float FIXED_MACE_RANGE = 3.0f;
+
+            [HarmonyPostfix]
+            public static void Postfix(int id, EquipmentTypeInfo __result)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixChildOfGalaxyWeaponRange == null || !Plugin.FixChildOfGalaxyWeaponRange.Value ||
+                    __result == null)
+                    return;
+
+                if (id == GALAXY_WEAPON_ID && __result.type == EquipmentTypeInfo.EquipmentType.WEAPON)
+                {
+                    if (__result.range > FIXED_MACE_RANGE)
+                    {
+                        __result.range = FIXED_MACE_RANGE;
+                        TotalTriggeredFixes++;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// ③ 溶ける愛の武器「ラブ」の弾丸がパニック職員を無視・すり抜けて鎮圧できないバグ修正
+        /// バニラで CannotControll / unconAction != null の職員を除外している判定をバイパスし、パニック職員に命中させる。
+        /// </summary>
+        [HarmonyPatch(typeof(SlimeGirlWeapon), "CheckHit")]
+        public static class SlimeGirlWeaponPanicTarget_Patch
+        {
+            private static readonly MethodInfo _giveDamageMethod = AccessTools.Method(typeof(SlimeGirlWeapon), "GiveDamage", new Type[] { typeof(UnitModel) });
+
+            [HarmonyPrefix]
+            public static bool Prefix(SlimeGirlWeapon __instance, UnitModel target, ref bool __result)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixSlimeGirlWeaponPanicTarget == null || !Plugin.FixSlimeGirlWeaponPanicTarget.Value ||
+                    __instance == null || target == null)
+                    return true;
+
+                if (!target.IsAttackTargetable())
+                    return true;
+
+                if (target is WorkerModel worker && worker != __instance.model.owner as WorkerModel && worker.IsPanic())
+                {
+                    _giveDamageMethod?.Invoke(__instance, new object[] { target });
+                    TotalTriggeredFixes++;
+                    __result = true;
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// ④ 夢喰い獏（空虚な夢）覚醒時の職員永久操作不能・無敵化バグ修正
+        /// アニメーションイベントコールバックのキュー枯渇保護と、覚醒タイマー安全救出機構を追加。
+        /// </summary>
+        [HarmonyPatch(typeof(Baku), "OnWorkerAnimCalled")]
+        public static class BakuAnimCallGuard_Patch
+        {
+            private static readonly FieldInfo _wakeupField = AccessTools.Field(typeof(Baku), "wakeup");
+            private static readonly FieldInfo _annoyedField = AccessTools.Field(typeof(Baku), "annoyed");
+
+            [HarmonyPrefix]
+            public static bool Prefix(Baku __instance, int i)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixVoidDreamWakeUpFreeze == null || !Plugin.FixVoidDreamWakeUpFreeze.Value ||
+                    __instance == null)
+                    return true;
+
+                if (i == 1000600)
+                {
+                    var q = _wakeupField?.GetValue(__instance) as Queue<WorkerModel>;
+                    if (q == null || q.Count == 0) return false;
+                }
+                else if (i == 1000601)
+                {
+                    var q = _annoyedField?.GetValue(__instance) as Queue<WorkerModel>;
+                    if (q == null || q.Count == 0) return false;
+                }
+                return true;
+            }
+        }
+
+        [HarmonyPatch(typeof(Uncontrollable_Baku), "Execute")]
+        public static class VoidDreamUnconSafety_Patch
+        {
+            private static readonly FieldInfo _modelField = AccessTools.Field(typeof(Uncontrollable_Baku), "model");
+            private static readonly FieldInfo _wakedField = AccessTools.Field(typeof(Uncontrollable_Baku), "waked");
+
+            private static readonly Dictionary<Uncontrollable_Baku, float> _wakeElapsedMap
+                = new Dictionary<Uncontrollable_Baku, float>();
+
+            [HarmonyPostfix]
+            public static void Postfix(Uncontrollable_Baku __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixVoidDreamWakeUpFreeze == null || !Plugin.FixVoidDreamWakeUpFreeze.Value ||
+                    __instance == null)
+                    return;
+
+                bool waked = false;
+                if (_wakedField != null)
+                {
+                    waked = (bool)_wakedField.GetValue(__instance);
+                }
+
+                if (waked)
+                {
+                    float elapsed = 0f;
+                    _wakeElapsedMap.TryGetValue(__instance, out elapsed);
+                    elapsed += Time.deltaTime;
+                    _wakeElapsedMap[__instance] = elapsed;
+
+                    if (elapsed > 2.0f)
+                    {
+                        var worker = _modelField?.GetValue(__instance) as WorkerModel;
+                        if (worker != null && worker.unconAction == __instance)
+                        {
+                            worker.GetControl();
+                            worker.SetInvincible(false);
+                            _wakeElapsedMap.Remove(__instance);
+                            TotalTriggeredFixes++;
+                        }
+                    }
+                }
+            }
+
+            public static void ClearCache()
+            {
+                _wakeElapsedMap.Clear();
+            }
+        }
+
+        /// <summary>
+        /// ⑤ 多段演出なのにダメージが1回しか入らないバグ修正（宇宙の欠片等）
+        /// 多段攻撃演出に合わせて適切に分割したDamageInfo配列を返す。
+        /// </summary>
+        [HarmonyPatch(typeof(CosmosInnerWeapon), "OnAttackStart")]
+        public static class CosmosInnerWeapon_Patch
+        {
+            [HarmonyPrefix]
+            public static bool Prefix(CosmosInnerWeapon __instance, UnitModel actor, UnitModel target, ref EquipmentScriptBase.WeaponDamageInfo __result)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixMultiHitWeaponDamage == null || !Plugin.FixMultiHitWeaponDamage.Value ||
+                    __instance == null || actor == null)
+                    return true;
+
+                var weaponModel = __instance.model as WeaponModel;
+                if (weaponModel == null || weaponModel.metaInfo == null || weaponModel.metaInfo.animationNames == null || weaponModel.metaInfo.animationNames.Length < 2)
+                    return true;
+
+                string anim = weaponModel.metaInfo.animationNames[UnityEngine.Random.Range(0, 2)];
+                DamageInfo fullDmg = weaponModel.GetDamage(actor);
+                DamageInfo d1 = fullDmg.Copy();
+                DamageInfo d2 = fullDmg.Copy();
+                d1.min *= 0.5f; d1.max *= 0.5f;
+                d2.min *= 0.5f; d2.max *= 0.5f;
+
+                __result = new EquipmentScriptBase.WeaponDamageInfo(anim, new DamageInfo[] { d1, d2 });
+                TotalTriggeredFixes++;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// ⑥ 攻撃キャンセルと命中判定の不一致（移動中のゴースト攻撃・キューズレ）修正
+        /// CancelWeapon時に残存DamageInfoキューを完全消去し、Spineアニメーション状態を安全にリセットする。
+        /// </summary>
+        [HarmonyPatch(typeof(UnitModel), "CancelWeapon")]
+        public static class AttackCancelHitboxMismatch_Patch
+        {
+            private static readonly FieldInfo _currentDamageInfosField = AccessTools.Field(typeof(WeaponModel), "_currentDamageInfos");
+
+            [HarmonyPostfix]
+            public static void Postfix(UnitModel __instance)
+            {
+                if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
+                    Plugin.FixAttackCancelHitboxMismatch == null || !Plugin.FixAttackCancelHitboxMismatch.Value ||
+                    __instance == null)
+                    return;
+
+                if (__instance.Equipment != null && __instance.Equipment.weapon != null)
+                {
+                    var weapon = __instance.Equipment.weapon;
+                    var queue = _currentDamageInfosField?.GetValue(weapon) as Queue<DamageInfo>;
+                    if (queue != null && queue.Count > 0)
+                    {
+                        queue.Clear();
+                        TotalTriggeredFixes++;
+                    }
+                    weapon.currentTarget = null;
+                }
+
+                if (__instance is WorkerModel worker)
+                {
+                    try
+                    {
+                        var unit = worker.GetWorkerUnit();
+                        if (unit != null)
+                        {
+                            unit.EndAttack();
+                        }
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
             }
         }
     }

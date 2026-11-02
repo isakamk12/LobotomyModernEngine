@@ -43,6 +43,12 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> FixBigBirdOverloadImmunity;
         public static ConfigEntry<bool> FixRedHoodWeaponRange;
         public static ConfigEntry<bool> FixMovementSlowDebuffs;
+        public static ConfigEntry<bool> FixTwilightPaleAttack;
+        public static ConfigEntry<bool> FixChildOfGalaxyWeaponRange;
+        public static ConfigEntry<bool> FixSlimeGirlWeaponPanicTarget;
+        public static ConfigEntry<bool> FixVoidDreamWakeUpFreeze;
+        public static ConfigEntry<bool> FixMultiHitWeaponDamage;
+        public static ConfigEntry<bool> FixAttackCancelHitboxMismatch;
         public static ConfigEntry<bool> EnableSpineAtlasCache;
         public static ConfigEntry<bool> EnableCursorLeakFix;
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
@@ -87,6 +93,12 @@ namespace LobotomyModernEngine
             FixBigBirdOverloadImmunity = Config.Bind("VanillaBugFix", "FixBigBirdOverloadImmunity", true, "効かないねぇ！大鳥だから！バグ修正 (大鳥がmaxWorkCount=0のためクリフォト暴走の対象外になっていたバグ修正)");
             FixRedHoodWeaponRange = Config.Bind("VanillaBugFix", "FixRedHoodWeaponRange", true, "紅の傷跡短小バグ＆インベントリ射程表記ズレ修正 (通常攻撃時に射程が4→3に縮むバグとインベントリ射程閾値バグ修正)");
             FixMovementSlowDebuffs = Config.Bind("VanillaBugFix", "FixMovementSlowDebuffs", true, "氷のかけら・笑顔・失楽園等の移動速度デバフ修正 (調律者以外にも効くよう正常化、効果終了後の超加速暴走防止、試練エネミーの減速無効修正)");
+            FixTwilightPaleAttack = Config.Bind("VanillaBugFix", "FixTwilightPaleAttack", true, "黄昏青属性攻撃不発バグ修正 (黄昏の通常攻撃で最後の青属性(Pale)攻撃がSpineイベント数の不一致で消化されないバグ修正)");
+            FixChildOfGalaxyWeaponRange = Config.Bind("VanillaBugFix", "FixChildOfGalaxyWeaponRange", true, "銀河の子武器射程バグ修正 (メイスなのに射程が銃並み8になっていた設定ミスを本来の近接射程3に補正)");
+            FixSlimeGirlWeaponPanicTarget = Config.Bind("VanillaBugFix", "FixSlimeGirlWeaponPanicTarget", true, "ラブの弾丸パニック無視バグ修正 (溶ける愛武器「ラブ」でパニック職員を狙った際に弾がすり抜けて鎮圧できないバグ修正)");
+            FixVoidDreamWakeUpFreeze = Config.Bind("VanillaBugFix", "FixVoidDreamWakeUpFreeze", true, "空虚な夢(夢喰い獏)覚醒スタックバグ修正 (職員覚醒時にキュー不整合やイベント欠落で永久操作不能・無敵化するバグの安全救出機構)");
+            FixMultiHitWeaponDamage = Config.Bind("VanillaBugFix", "FixMultiHitWeaponDamage", true, "多段演出単発ダメージバグ修正 (宇宙の欠片等で多段ヒット演出なのにダメージが1回しか入らない不整合を適正分割化)");
+            FixAttackCancelHitboxMismatch = Config.Bind("VanillaBugFix", "FixAttackCancelHitboxMismatch", true, "攻撃キャンセル判定残留バグ修正 (移動やターゲット喪失時にSpineアニメ中断と残存ダメージキュー破棄を徹底しゴースト判定を防止)");
             EnableSpineAtlasCache = Config.Bind("MemoryLeakFix", "SpineAtlasCache", true, "アニメーション切替時の Spine Texture2D/Material 永久リーク＆CPUスパイク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableCursorLeakFix = Config.Bind("MemoryLeakFix", "CursorLeakFix", true, "弾丸カーソル・照準アニメーションの毎フレーム Texture2D 永久リーク防止 (日終了・シーン遷移時の安全一括Destroy)");
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (表示状態Dirty検知＆所要時間計測)");
@@ -240,6 +252,37 @@ namespace LobotomyModernEngine
                         ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.OrdealCreatureModel_OnFixedUpdate_Patch), "VanillaBugFix (Ordeal MovementScaleByBuf Apply)");
                         activeGroups++;
                     }
+                    if (FixTwilightPaleAttack.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.TwilightPaleAttack_Patch), "VanillaBugFix (Twilight Pale Attack Flush)");
+                        activeGroups++;
+                    }
+                    if (FixChildOfGalaxyWeaponRange.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.ChildOfGalaxyRange_Patch), "VanillaBugFix (ChildOfGalaxy Weapon Range)");
+                        activeGroups++;
+                    }
+                    if (FixSlimeGirlWeaponPanicTarget.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.SlimeGirlWeaponPanicTarget_Patch), "VanillaBugFix (SlimeGirl Love Panic Target)");
+                        activeGroups++;
+                    }
+                    if (FixVoidDreamWakeUpFreeze.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.BakuAnimCallGuard_Patch), "VanillaBugFix (Baku Anim Call Guard)");
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.VoidDreamUnconSafety_Patch), "VanillaBugFix (VoidDream Uncon Safety Timer)");
+                        activeGroups++;
+                    }
+                    if (FixMultiHitWeaponDamage.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.CosmosInnerWeapon_Patch), "VanillaBugFix (MultiHit Cosmos Weapon Damage)");
+                        activeGroups++;
+                    }
+                    if (FixAttackCancelHitboxMismatch.Value)
+                    {
+                        ApplyAndVerifyPatch(typeof(VanillaBugFixPatch.AttackCancelHitboxMismatch_Patch), "VanillaBugFix (Attack Cancel Hitbox Flush)");
+                        activeGroups++;
+                    }
                     VanillaBugFixPatch.ActiveBugFixGroupCount = activeGroups;
                 }
                 
@@ -376,6 +419,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.6";
+        public const string PLUGIN_VERSION = "0.7.7";
     }
 }

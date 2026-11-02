@@ -321,7 +321,7 @@ namespace LobotomyModernEngine.Diagnostics
 
             bool bugfixActive = VanillaBugFixPatch.TotalTriggeredFixes > 0;
             GUILayout.Label(
-                string.Format("• [{0}] バニラ固有バグ修正: {1}/10 項目有効 (実ゲーム内でバグ発動阻止: {2}回)",
+                string.Format("• [{0}] バニラ固有バグ修正: {1}/16 項目有効 (実ゲーム内でバグ発動阻止: {2}回)",
                     bugfixActive ? "実働確認" : "パッチ適用済/待機中",
                     VanillaBugFixPatch.ActiveBugFixGroupCount,
                     VanillaBugFixPatch.TotalTriggeredFixes),
