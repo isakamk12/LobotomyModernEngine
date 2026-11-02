@@ -19,10 +19,13 @@ namespace LobotomyModernEngine.Patches
 
         static StatUpgradeCostPatch()
         {
-            StatUI.RCost = CheapCostAry;
-            StatUI.WCost = CheapCostAry;
-            StatUI.BCost = CheapCostAry;
-            StatUI.PCost = CheapCostAry;
+            if (IsEnabled)
+            {
+                StatUI.RCost = CheapCostAry;
+                StatUI.WCost = CheapCostAry;
+                StatUI.BCost = CheapCostAry;
+                StatUI.PCost = CheapCostAry;
+            }
         }
 
         public static bool IsEnabled

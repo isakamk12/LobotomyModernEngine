@@ -17,7 +17,7 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.1";
+        public const string PLUGIN_VERSION = "0.7.2";
 
         internal static new ManualLogSource Logger;
         internal static Harmony HarmonyInstance;
@@ -58,10 +58,17 @@ namespace LobotomyModernEngine
             Logger = base.Logger;
             Logger.LogInfo(string.Format("{0} v{1} initializing on CLR {2}...", PLUGIN_NAME, PLUGIN_VERSION, Environment.Version));
 
+            // 配布エディション判定 (DEBUG_PLUS 定義時はチート・検証短縮機能がデフォルトON、通常版はデフォルトOFF)
+#if DEBUG_PLUS
+            const bool defaultDebugFeatures = true;
+#else
+            const bool defaultDebugFeatures = false;
+#endif
+
             // 設定の初期化
             EnableEngineOverhaul = Config.Bind("General", "EnableEngineOverhaul", true, "全般的な最適化パッチを有効化する");
             EnableUITextReadabilityFix = Config.Bind("UIReadability", "EnableUITextReadabilityFix", true, "エンサイクロペディア・ギフト・ローディング画面のフォントサイズ適正化＆文字切れ修正を有効化する");
-            EnableCheapStatUpgrade = Config.Bind("Debug", "CheapStatUpgrade", true, "デバッグ・レベリング短縮用に職員のステータス強化に必要なLOBポイントを一律1にする");
+            EnableCheapStatUpgrade = Config.Bind("Debug", "CheapStatUpgrade", defaultDebugFeatures, "デバッグ・レベリング短縮用に職員のステータス強化に必要なLOBポイントを一律1にする");
             EnableVanillaBugFixes = Config.Bind("VanillaBugFix", "EnableVanillaBugFixes", true, "バニラ固有バグ修正パッチ群を一括で有効化する");
             FixTwilightArmorGlobalBuff = Config.Bind("VanillaBugFix", "FixTwilightArmorGlobalBuff", true, "いつでもどこでも黄昏バグ修正 (黄昏防具が他武器の攻撃力まで最大2倍にしていたバグ＆UnitModelのnullチェックバグ修正)");
             FixChesedBulletRefiningResearch = Config.Bind("VanillaBugFix", "FixChesedBulletRefiningResearch", true, "プラシーボ効果バグ修正 (ケセド研究「HP、SP弾精製」ID:803を取得しても弾丸回復量が25→40に増えないバグ修正)");
@@ -84,7 +91,7 @@ namespace LobotomyModernEngine
             EnableSefiraPanelOptimization = Config.Bind("Optimization", "SefiraPanelOptimization", true, "SefiraPanel の NoData/Portrait キャッシュ化");
             EnablePassableOptimization = Config.Bind("Optimization", "PassableOptimization", true, "CheckPassable の走査最適化");
             MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4, 初回タスク投入時に遅延起動)");
-            EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", true, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)を強化する (F8またはF9画面で即切替可)");
+            EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", defaultDebugFeatures, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)を強化する (F8またはF9画面で即切替可)");
             EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", false, "定期的にFPS・メモリ・GC情報をログ出力する");
 
             // LMF.Core 基盤コンポーネントの初期化
