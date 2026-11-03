@@ -181,8 +181,8 @@ namespace LobotomyModernEngine.Diagnostics
                 return;
             }
 
-            float width = 500f;
-            float height = 610f;
+            float width = 550f;
+            float height = 720f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -352,6 +352,25 @@ namespace LobotomyModernEngine.Diagnostics
                     DebugGearBuffPatch.BuffedEquipmentCount),
                 gearBuffOn ? _goodStyle : _warnStyle,
                 EmptyOptions);
+
+            GUILayout.Space(2f);
+            GUILayout.Label("【3】主要処理CPUプロファイラ (実測値・毎秒更新):", _headerStyle, EmptyOptions);
+
+            for (int i = 0; i < GameProfiler.AllMetrics.Length; i++)
+            {
+                var m = GameProfiler.AllMetrics[i];
+                string colorTag = m.AvgMsPerFrame > 2.0f ? "<color=#FF6B6B>" : (m.AvgMsPerFrame > 0.5f ? "<color=#FFD166>" : "<color=#06D6A0>");
+                GUILayout.Label(
+                    string.Format("• {0}: {1}{2:F2} ms/フレーム</color>  |  計 {3:F1} ms/秒 ({4} 回/秒, 最大 {5:F2} ms)",
+                        m.DisplayName,
+                        colorTag,
+                        m.AvgMsPerFrame,
+                        m.TotalMsPerSec,
+                        m.CallsPerSec,
+                        m.MaxMsPerCall),
+                    _labelStyle,
+                    EmptyOptions);
+            }
 
             GUILayout.BeginHorizontal(EmptyOptions);
             if (GUILayout.Button(gearBuffOn ? "[F8] 初期装備＆懺悔をバニラに戻す" : "[F8] 初期装備＆懺悔をデバッグ強化する", _buttonStyle, EmptyOptions))
