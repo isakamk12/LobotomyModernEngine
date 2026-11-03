@@ -59,7 +59,7 @@ namespace LobotomyModernEngine.Diagnostics
             if (Input.GetKeyDown(KeyCode.F8))
             {
                 DebugGearBuffPatch.ToggleBuff();
-                DebugAgentBuffPatch.Toggle();
+                DebugAgentBuffPatch.SyncWithConfig();
             }
 
             float dt = Time.unscaledDeltaTime;
@@ -182,8 +182,8 @@ namespace LobotomyModernEngine.Diagnostics
                 return;
             }
 
-            float width = 550f;
-            float height = 750f;
+            float width = 620f;
+            float height = 755f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -364,29 +364,52 @@ namespace LobotomyModernEngine.Diagnostics
                 EmptyOptions);
 
             GUILayout.Space(2f);
-            GUILayout.Label("【3】主要処理CPUプロファイラ (実測値・毎秒更新):", _headerStyle, EmptyOptions);
+            GUILayout.Label(
+                string.Format("【3】主要処理CPU実測プロファイラ (毎秒更新 / 二重計上除外の純粋合計: {0:F2} ms/秒 [{1:F2} ms/f]):",
+                    GameProfiler.TotalExclusiveMsPerSec,
+                    GameProfiler.TotalExclusiveMsPerFrame),
+                _headerStyle,
+                EmptyOptions);
 
             for (int i = 0; i < GameProfiler.AllMetrics.Length; i++)
             {
                 var m = GameProfiler.AllMetrics[i];
-                string colorTag = m.AvgMsPerFrame > 2.0f ? "<color=#FF6B6B>" : (m.AvgMsPerFrame > 0.5f ? "<color=#FFD166>" : "<color=#06D6A0>");
-                GUILayout.Label(
-                    string.Format("• {0}: {1}{2:F2} ms/フレーム</color>  |  計 {3:F1} ms/秒 ({4} 回/秒, 最大 {5:F2} ms)",
-                        m.DisplayName,
-                        colorTag,
-                        m.AvgMsPerFrame,
-                        m.TotalMsPerSec,
-                        m.CallsPerSec,
-                        m.MaxMsPerCall),
-                    _labelStyle,
-                    EmptyOptions);
+                string colorTag = m.TotalMsPerSec > 10.0f ? "<color=#FF6B6B>" : (m.TotalMsPerSec > 2.0f ? "<color=#FFD166>" : "<color=#06D6A0>");
+                if (m.HasNestedChildren)
+                {
+                    GUILayout.Label(
+                        string.Format("• {0}: {1}累積 {2:F2}ms/s (自己 {3:F2}ms/s)</color> | 1回 {4:F1}μs | {5}回/s | 最大 {6:F2}ms",
+                            m.DisplayName,
+                            colorTag,
+                            m.TotalMsPerSec,
+                            m.ExclusiveMsPerSec,
+                            m.AvgUsPerCall,
+                            m.CallsPerSec,
+                            m.MaxMsPerCall),
+                        _labelStyle,
+                        EmptyOptions);
+                }
+                else
+                {
+                    GUILayout.Label(
+                        string.Format("• {0}: {1}累積 {2:F2}ms/s ({3:F2}ms/f)</color> | 1回 {4:F1}μs | {5}回/s | 最大 {6:F2}ms",
+                            m.DisplayName,
+                            colorTag,
+                            m.TotalMsPerSec,
+                            m.AvgMsPerFrame,
+                            m.AvgUsPerCall,
+                            m.CallsPerSec,
+                            m.MaxMsPerCall),
+                        _labelStyle,
+                        EmptyOptions);
+                }
             }
 
             GUILayout.BeginHorizontal(EmptyOptions);
             if (GUILayout.Button(gearBuffOn ? "[F8] デバッグ強化(装備+職員)をバニラに戻す" : "[F8] デバッグ強化(装備+ランク5職員)を適用", _buttonStyle, EmptyOptions))
             {
                 DebugGearBuffPatch.ToggleBuff();
-                DebugAgentBuffPatch.Toggle();
+                DebugAgentBuffPatch.SyncWithConfig();
             }
             if (GUILayout.Button(lobEnabled ? "1-LOB強化をOFFにする" : "1-LOB強化をONにする", _buttonStyle, EmptyOptions))
             {

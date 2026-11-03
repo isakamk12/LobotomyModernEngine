@@ -124,9 +124,9 @@ namespace LobotomyModernEngine
             EnableSefiraPanelOptimization = Config.Bind("Optimization", "SefiraPanelOptimization", true, "SefiraPanel の NoData/Portrait キャッシュ化");
             EnablePassableOptimization = Config.Bind("Optimization", "PassableOptimization", true, "CheckPassable の走査最適化");
             MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4, 初回タスク投入時に遅延起動)");
-            EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", defaultDebugFeatures, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)を強化する (F8またはF9画面で即切替可)");
-            EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", false, "定期的にFPS・メモリ・GC情報をログ出力する");
-            EnableCpuProfiler = Config.Bind("Debug", "EnableCpuProfiler", true, "主要処理(経路探索/索敵/AI/移動)のCPU実行時間を実測プロファイリングする (F9画面に表示)");
+            EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", defaultDebugFeatures, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)および初期・雇用職員のランク5(ALL 100)化を適用する (F8またはF9画面で即切替可)");
+            EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", true, "管理パート中に5秒おき＆ステージ終了時にCPU実測プロファイル結果をBepInExログ(LogOutput.log)へ出力する");
+            EnableCpuProfiler = Config.Bind("Debug", "EnableCpuProfiler", true, "主要処理(経路探索/索敵/AI/移動)のCPU実行時間を実測プロファイリングする (F9画面およびログに出力)");
 
             DiagnosticsOverlay.ShowMiniStatusBadge = ShowMiniHudBadge.Value;
 
@@ -192,6 +192,8 @@ namespace LobotomyModernEngine
                 // デバッグ：初期・雇用ランク5職員パッチ
                 ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.AgentModel_GetDefaultStat_Patch), "DebugAgentBuff (DefaultStat Rank 5 Hook)");
                 ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.CustomizingWindow_SetAgentStatBonus_Patch), "DebugAgentBuff (Customizing Rank 5 Hook)");
+                ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.AgentManager_LoadData_Patch), "DebugAgentBuff (AgentManager LoadData Sync)");
+                ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.GameManager_StartStage_Patch), "DebugAgentBuff (GameManager StartStage Sync)");
 
                 // デバッグ強化LOBポイント一律1パッチ
                 StatUpgradeCostPatch.SyncStaticArrays();
@@ -366,8 +368,11 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.SearchPath_ProfilePatch), "Profiler (GraphAstar SearchPath)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.GetEnteredTargetsWithExclude_ProfilePatch), "Profiler (Passage WithExclude)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.GetEnteredTargetsNoArg_ProfilePatch), "Profiler (Passage NoArg)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.AgentModel_OnFixedUpdate_ProfilePatch), "Profiler (AgentModel FixedUpdate)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.OfficerModel_OnFixedUpdate_ProfilePatch), "Profiler (OfficerModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.WorkerModel_OnFixedUpdate_ProfilePatch), "Profiler (WorkerModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.CreatureModel_OnFixedUpdate_ProfilePatch), "Profiler (CreatureModel FixedUpdate)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.OrdealCreatureModel_OnFixedUpdate_ProfilePatch), "Profiler (OrdealCreatureModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.MovableObjectNode_ProcessMoveNode_ProfilePatch), "Profiler (MovableObjectNode ProcessMoveNode)");
                 }
             }
@@ -485,6 +490,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.8.0";
+        public const string PLUGIN_VERSION = "0.8.1";
     }
 }
