@@ -48,7 +48,13 @@ namespace LobotomyModernEngine.Patches
             }
         }
 
-        private static readonly Dictionary<CursorScaleKey, Texture2D> ScaledCursorCache = new Dictionary<CursorScaleKey, Texture2D>(64);
+        private class ScaledCursorEntry
+        {
+            public Texture2D SourceTexture;
+            public Texture2D ScaledTexture;
+        }
+
+        private static readonly Dictionary<CursorScaleKey, ScaledCursorEntry> ScaledCursorCache = new Dictionary<CursorScaleKey, ScaledCursorEntry>(64);
 
         private static Texture2D _lastBaseCursorTex;
         private static int _lastScaledWidth = -1;
@@ -60,65 +66,34 @@ namespace LobotomyModernEngine.Patches
         public static int CachedCursorTextureCount => ScaledCursorCache.Count;
 
         /// <summary>
-        /// シーン遷移時の安全なリソース解放 (v0.7.6 Live Reference Verification)
-        /// CursorManager やアクティブな UI/Renderer で現在も使用されているテクスチャを検知し、
-        /// 使用中テクスチャは破棄せず保持 (Retained) し、未参照テクスチャのみを Object.Destroy で解放する。
+        /// シーン遷移時の安全なリソース整理 (v0.8.2 Source-Lifetime Reference Verification)
+        /// 元となるカーソル Texture2D アセットが生存している限り量子化済み縮小テクスチャを保持・再利用し、
+        /// 元テクスチャがアンロードされた孤立エントリのみを安全に Object.Destroy で解放する。
         /// </summary>
         public static void SafeClearUnusedResources()
         {
             if (ScaledCursorCache.Count == 0) return;
-
-            HashSet<Texture> activeTextures = new HashSet<Texture>();
-            try
-            {
-                // CursorManager の現在テクスチャを保護
-                if (CursorManager.instance != null)
-                {
-                    Texture currentCursor = Traverse.Create(CursorManager.instance).Field("currentCursorTexture").GetValue<Texture2D>();
-                    if (currentCursor != null)
-                    {
-                        activeTextures.Add(currentCursor);
-                    }
-                }
-
-                // アクティブな UI Graphic から使用中テクスチャを収集
-                UnityEngine.UI.Graphic[] graphics = UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Graphic>();
-                if (graphics != null)
-                {
-                    for (int i = 0; i < graphics.Length; i++)
-                    {
-                        var g = graphics[i];
-                        if (g != null && g.mainTexture != null)
-                        {
-                            activeTextures.Add(g.mainTexture);
-                        }
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                return;
-            }
 
             List<CursorScaleKey> toRemove = new List<CursorScaleKey>();
             int retained = 0;
 
             foreach (var kvp in ScaledCursorCache)
             {
-                var tex = kvp.Value;
-                if (tex == null)
+                var entry = kvp.Value;
+                if (entry == null || entry.ScaledTexture == null)
                 {
                     toRemove.Add(kvp.Key);
                     continue;
                 }
 
-                if (activeTextures.Contains(tex))
+                if (entry.SourceTexture != null)
                 {
                     retained++;
                 }
                 else
                 {
-                    UnityEngine.Object.Destroy(tex);
+                    UnityEngine.Object.Destroy(entry.ScaledTexture);
+                    entry.ScaledTexture = null;
                     DestroyedCursorTexCount++;
                     toRemove.Add(kvp.Key);
                 }
@@ -142,9 +117,10 @@ namespace LobotomyModernEngine.Patches
         {
             foreach (var kvp in ScaledCursorCache)
             {
-                if (kvp.Value != null)
+                if (kvp.Value != null && kvp.Value.ScaledTexture != null)
                 {
-                    UnityEngine.Object.Destroy(kvp.Value);
+                    UnityEngine.Object.Destroy(kvp.Value.ScaledTexture);
+                    kvp.Value.ScaledTexture = null;
                     DestroyedCursorTexCount++;
                 }
             }
@@ -248,12 +224,12 @@ namespace LobotomyModernEngine.Patches
                     Mipmap = mipmap
                 };
 
-                if (ScaledCursorCache.TryGetValue(__state, out var cachedTex))
+                if (ScaledCursorCache.TryGetValue(__state, out var cachedEntry))
                 {
-                    if (cachedTex != null)
+                    if (cachedEntry != null && cachedEntry.ScaledTexture != null)
                     {
                         AvoidedCursorTexAllocations++;
-                        __result = cachedTex;
+                        __result = cachedEntry.ScaledTexture;
                         return false;
                     }
                     ScaledCursorCache.Remove(__state);
@@ -276,7 +252,11 @@ namespace LobotomyModernEngine.Patches
 
                 if (!ScaledCursorCache.ContainsKey(__state) && !object.ReferenceEquals(__result, source))
                 {
-                    ScaledCursorCache[__state] = __result;
+                    ScaledCursorCache[__state] = new ScaledCursorEntry
+                    {
+                        SourceTexture = source,
+                        ScaledTexture = __result
+                    };
                 }
             }
         }

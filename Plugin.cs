@@ -429,7 +429,7 @@ namespace LobotomyModernEngine
             CursorLeakPatch.SafeClearUnusedResources();
 
             Logger.LogInfo(string.Format(
-                "[LME Lifecycle v0.7.6] Scene loaded: {0} (Gen:{1}). Safely verified live references: Spine (Destroyed:{2}, Retained:{3}), Cursor (Destroyed:{4}, Retained:{5})",
+                "[LME Lifecycle v0.8.2] Scene loaded: {0} (Gen:{1}). Verified source-lifetime caches: Spine (Destroyed:{2}, Retained:{3}), Cursor (Destroyed:{4}, Retained:{5})",
                 sceneName,
                 generation,
                 SpineAtlasCachePatch.DestroyedNativeObjectCount,
@@ -490,6 +490,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.8.1";
+        public const string PLUGIN_VERSION = "0.8.2";
     }
 }

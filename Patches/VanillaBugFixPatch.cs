@@ -817,30 +817,34 @@ namespace LobotomyModernEngine.Patches
 
         /// <summary>
         /// ① 黄昏の通常攻撃で最後の青属性（Pale）が出ないバグ修正
-        /// Spineイベントが3回しか鳴らずキューに残った4番目のPaleダメージをアニメーション完了直前に確実にディスパッチする。
+        /// Spineイベントが3回しか鳴らずキューに残った4番目のPaleダメージを攻撃完了直前 (BossBirdWeapon.OnAttackEnd) に確実にディスパッチする。
         /// </summary>
-        [HarmonyPatch(typeof(WorkerModel), "SpecialAttackEnd")]
+        [HarmonyPatch(typeof(BossBirdWeapon), "OnAttackEnd", new Type[] { typeof(UnitModel), typeof(UnitModel) })]
         public static class TwilightPaleAttack_Patch
         {
             private static readonly FieldInfo _currentDamageInfosField = AccessTools.Field(typeof(WeaponModel), "_currentDamageInfos");
 
             [HarmonyPrefix]
-            public static void Prefix(WorkerModel __instance)
+            public static void Prefix(BossBirdWeapon __instance, UnitModel actor, UnitModel target)
             {
                 if (Plugin.EnableVanillaBugFixes == null || !Plugin.EnableVanillaBugFixes.Value ||
                     Plugin.FixTwilightPaleAttack == null || !Plugin.FixTwilightPaleAttack.Value ||
-                    __instance == null || __instance.Equipment == null || __instance.Equipment.weapon == null)
+                    __instance == null || actor == null)
                     return;
 
-                var weapon = __instance.Equipment.weapon;
-                if (weapon.script is BossBirdWeapon)
+                var weapon = __instance.model as WeaponModel;
+                if (weapon == null && actor.Equipment != null)
+                {
+                    weapon = actor.Equipment.weapon;
+                }
+                if (weapon != null)
                 {
                     var queue = _currentDamageInfosField?.GetValue(weapon) as Queue<DamageInfo>;
                     if (queue != null && queue.Count > 0)
                     {
                         while (queue.Count > 0)
                         {
-                            weapon.OnGiveDamage(__instance);
+                            weapon.OnGiveDamage(actor);
                             TotalTriggeredFixes++;
                         }
                     }

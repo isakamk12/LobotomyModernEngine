@@ -61,6 +61,8 @@ namespace LobotomyModernEngine.Patches
 
         private class CachedAtlasEntry
         {
+            public Sprite SourceSprite;
+            public Texture2D SourceTexture;
             public AtlasRegion Region;
             public Material CreatedMaterial;
             public Texture2D CreatedTexture;
@@ -91,74 +93,29 @@ namespace LobotomyModernEngine.Patches
                 DestroyedNativeObjectCount++;
             }
             entry.Region = null;
+            entry.SourceSprite = null;
+            entry.SourceTexture = null;
         }
 
         /// <summary>
-        /// シーン遷移時の安全なリソース解放 (v0.7.6 Live Reference Verification)
-        /// 単に全破棄するのではなく、DontDestroyOnLoad やアクティブな Renderer / UI Graphic で
-        /// 現在も参照されているマテリアル・テクスチャを走査・特定し、
-        /// 使用中素材はキャッシュ内にそのまま安全に保持 (Retained) し、
-        /// 参照が完全にゼロとなった孤立リソースのみを UnityEngine.Object.Destroy で解放する。
+        /// シーン遷移時の安全なリソース整理 (v0.8.2 Source-Lifetime Reference Verification)
+        /// 
+        /// 【重要修正 (v0.8.2 ピンク矩形化バグ根治)】
+        /// Main シーンのロード直後 (GameState.STOP / 配置フェーズ中) は、AgentUnit の SpineRenderer が
+        /// optimizeLevel = 5 でメッシュ更新を待機しているため、Spine の Skin/AtlasRegion には
+        /// すでに CreatedMaterial / CreatedTexture が紐付いているにもかかわらず、
+        /// MeshRenderer.sharedMaterials にはまだ反映されていない。
+        /// そのため Renderer.sharedMaterials 走査で Destroy すると、現存する職員の Spine スキン素材を
+        /// 破壊してしまい、職員がマゼンタ（ピンク矩形）化する。
+        /// 
+        /// 本キャッシュは元 Sprite / Texture2D 単位で PMA クローンを一意化（重複生成を完全遮断）しているため、
+        /// 元の Unity Sprite / Texture2D アセット自体が生存している限りキャッシュを破棄せず保持・再利用し、
+        /// 元アセットが Unity 側でアンロード (== null) された孤立エントリのみを安全に Destroy する。
         /// </summary>
         public static void SafeClearUnusedResources()
         {
             if (Cache.Count == 0) return;
 
-            // 1. 現在生存している全Renderer・UIコンポーネントから使用中Material/Textureを収集
-            HashSet<Material> activeMaterials = new HashSet<Material>();
-            HashSet<Texture> activeTextures = new HashSet<Texture>();
-
-            try
-            {
-                Renderer[] renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
-                if (renderers != null)
-                {
-                    for (int i = 0; i < renderers.Length; i++)
-                    {
-                        Renderer r = renderers[i];
-                        if (r == null) continue;
-                        Material[] mats = r.sharedMaterials;
-                        if (mats != null)
-                        {
-                            for (int j = 0; j < mats.Length; j++)
-                            {
-                                Material m = mats[j];
-                                if (m != null)
-                                {
-                                    activeMaterials.Add(m);
-                                    if (m.mainTexture != null) activeTextures.Add(m.mainTexture);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                UnityEngine.UI.Graphic[] graphics = UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Graphic>();
-                if (graphics != null)
-                {
-                    for (int i = 0; i < graphics.Length; i++)
-                    {
-                        UnityEngine.UI.Graphic g = graphics[i];
-                        if (g == null) continue;
-                        if (g.material != null)
-                        {
-                            activeMaterials.Add(g.material);
-                            if (g.material.mainTexture != null) activeTextures.Add(g.material.mainTexture);
-                        }
-                        if (g.mainTexture != null)
-                        {
-                            activeTextures.Add(g.mainTexture);
-                        }
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // 万一の走査例外時は安全側に倒し、破棄を行わずに次回へ繰り延べる
-                return;
-            }
-
-            // 2. キャッシュ内の各エントリを検証し、アクティブ参照のない孤立エントリのみを破棄
             List<AtlasCacheKey> toRemove = new List<AtlasCacheKey>();
             int retained = 0;
 
@@ -171,24 +128,23 @@ namespace LobotomyModernEngine.Patches
                     continue;
                 }
 
-                bool inUse = false;
-                if (entry.CreatedMaterial != null && activeMaterials.Contains(entry.CreatedMaterial))
+                // 生成済みマテリアルまたはテクスチャが外部要因で失われている場合はエントリを除去
+                if (entry.CreatedMaterial == null || entry.CreatedTexture == null || entry.Region == null)
                 {
-                    inUse = true;
-                }
-                if (entry.CreatedTexture != null && activeTextures.Contains(entry.CreatedTexture))
-                {
-                    inUse = true;
+                    DestroyEntryResources(entry);
+                    toRemove.Add(kvp.Key);
+                    continue;
                 }
 
-                if (inUse)
+                // 元となる Unity Sprite または Texture2D アセットが生存している限り、
+                // 既存の Spine Skin / AtlasRegion や次回以降の ChangeSpineData で再利用されるため保持する
+                bool sourceAlive = (entry.SourceSprite != null) || (entry.SourceTexture != null);
+                if (sourceAlive)
                 {
-                    // ゲーム側で現在も使用中（DontDestroyOnLoad等）のため破棄せずキャッシュに保持
                     retained++;
                 }
                 else
                 {
-                    // 誰からも参照されていない孤立リソースであることが確定 -> 安全にDestroy
                     DestroyEntryResources(entry);
                     toRemove.Add(kvp.Key);
                 }
@@ -243,8 +199,10 @@ namespace LobotomyModernEngine.Patches
 
             if (Cache.TryGetValue(__state, out var entry))
             {
-                if (entry.CreatedMaterial != null && entry.CreatedTexture != null && entry.Region != null)
+                if (entry.CreatedMaterial != null && entry.CreatedTexture != null && entry.Region != null && entry.Region.page != null)
                 {
+                    entry.Region.page.rendererObject = entry.CreatedMaterial;
+                    entry.CreatedMaterial.mainTexture = entry.CreatedTexture;
                     CacheHitCount++;
                     __result = entry.Region;
                     return false; // new Material / new Texture2D / ApplyPMA を完全スキップ
@@ -281,6 +239,8 @@ namespace LobotomyModernEngine.Patches
                 CacheMissCount++;
                 Cache[__state] = new CachedAtlasEntry
                 {
+                    SourceSprite = s,
+                    SourceTexture = s.texture,
                     Region = __result,
                     CreatedMaterial = mat,
                     CreatedTexture = tex
@@ -316,8 +276,10 @@ namespace LobotomyModernEngine.Patches
 
             if (Cache.TryGetValue(__state, out var entry))
             {
-                if (entry.CreatedMaterial != null && entry.CreatedTexture != null && entry.Region != null)
+                if (entry.CreatedMaterial != null && entry.CreatedTexture != null && entry.Region != null && entry.Region.page != null)
                 {
+                    entry.Region.page.rendererObject = entry.CreatedMaterial;
+                    entry.CreatedMaterial.mainTexture = entry.CreatedTexture;
                     CacheHitCount++;
                     __result = entry.Region;
                     return false;
@@ -354,6 +316,8 @@ namespace LobotomyModernEngine.Patches
                 CacheMissCount++;
                 Cache[__state] = new CachedAtlasEntry
                 {
+                    SourceSprite = null,
+                    SourceTexture = t,
                     Region = __result,
                     CreatedMaterial = mat,
                     CreatedTexture = tex
