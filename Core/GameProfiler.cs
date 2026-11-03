@@ -1,22 +1,22 @@
 using System;
 using System.Diagnostics;
 using System.Text;
+using LobotomyModernEngine.Patches;
 
 namespace LobotomyModernEngine.Core
 {
     /// <summary>
-    /// ゲーム内主要CPU処理のリアルタイム計測プロファイラ (v0.8.3)
+    /// ゲーム内主要CPU処理のリアルタイム計測プロファイラ (v0.8.4)
     /// - Stopwatch.GetTimestamp() (高分解能タイマー / QPC) を使用。
     /// - 対象メソッドはすべてUnityメインスレッド上で実行されるため、Interlockedによるバスロック負荷を排し、
     ///   メインスレッド上の単純加算で計測オーバーヘッドを最小化。
     /// - 1回平均(μs/回)、秒間呼出(回/s)、秒間累積(ms/s)、1フレーム平均累積(ms/f)、最大スパイク(ms / 自己ms)を分離算出。
     /// - 入れ子呼び出し（WorkerAI / CreatureAI の内部で呼ばれる Movement / TargetScan / Pathfinding）による
     ///   二重計上を防ぐため、Inclusive（全体時間）と Exclusive（子処理を除いた純粋な自己時間）の双方を集計する。
-    /// - v0.8.3:
-    ///   1) 一時停止 (GameState.PAUSE) 時にステージ経過時間がリセットされていた集計バグを修正し、
-    ///      純粋な管理パート進行時間 (_stageActivePlayingSeconds) のみを分母としてステージ通算サマリーを算出。
-    ///   2) WorkerAI (AgentModel.OnFixedUpdate / OfficerModel.OnFixedUpdate) の内部処理を6項目 (3a〜3f) に細分化。
-    ///   3) 単発 5.0ms 以上のスパイク発生時に、発生箇所・GC(Gen0)割り込み回数・対象ユニット/ノード条件を即時ログ記録。
+    /// - v0.8.4:
+    ///   1) UseSkill.OnEnterRoom (3d-1) と SoundEffectロード/再生 (3g) の個別計測メトリックを追加。
+    ///   2) 変更前後の定量比較のため、PLAYING 中の 90ms級(>=80ms)/30ms級/5ms級スパイク発生回数、
+    ///      GC発生回数(Gen0/Gen1/Gen2)、最大フレーム停止時間(ms)および最低FPS(1秒平均・瞬間)をステージ通算集計。
     /// </summary>
     public static class GameProfiler
     {
@@ -198,13 +198,15 @@ namespace LobotomyModernEngine.Core
             Movement
         };
 
-        // WorkerAI (3.職員AI更新) の内部細分化メトリック (3a〜3f)
+        // WorkerAI (3.職員AI更新) の内部細分化メトリック (3a〜3g)
         public static readonly Metric SubAgentUpdate = new Metric("SubAgentUpdate", "3a.Agent更新全体 (AgentModel.FixedUpdate)", true);
         public static readonly Metric SubOfficerUpdate = new Metric("SubOfficerUpdate", "3b.Officer更新全体 (OfficerModel.FixedUpdate)", true);
         public static readonly Metric SubUpdateBufState = new Metric("SubUpdateBufState", "3c.バフ状態更新 (UnitModel.UpdateBufState)", false);
         public static readonly Metric SubUseSkill = new Metric("SubUseSkill", "3d.作業・入退室処理 (UseSkill.OnFixedUpdate)", false);
+        public static readonly Metric SubEnterRoom = new Metric("SubEnterRoom", "3d-1.入室時処理 (UseSkill.OnEnterRoom)", false);
         public static readonly Metric SubOverloadOrdeal = new Metric("SubOverloadOrdeal", "3e.暴走・試練発動 (AddOverloadGague)", false);
         public static readonly Metric SubOfficerNormalAI = new Metric("SubOfficerNormalAI", "3f.Officer自律行動 (ProcessActionNormalOfficer)", false);
+        public static readonly Metric SubSoundLoad = new Metric("SubSoundLoad", "3g.音声取得・キャッシュ (SoundEffect.Load)", false);
 
         public static readonly Metric[] WorkerSubMetrics = new Metric[]
         {
@@ -212,13 +214,37 @@ namespace LobotomyModernEngine.Core
             SubOfficerUpdate,
             SubUpdateBufState,
             SubUseSkill,
+            SubEnterRoom,
             SubOverloadOrdeal,
-            SubOfficerNormalAI
+            SubOfficerNormalAI,
+            SubSoundLoad
         };
 
         // 入れ子呼び出し（Parent-Child）の減算用アキュムレータ（メインスレッド専用）
         private static int _activeParentDepth;
         private static long _currentParentChildTicks;
+
+        // 変更前後比較用ステージ統計（PLAYING 中のみ集計）
+        public static int StageMethodSpike5msCount { get; private set; }
+        public static int StageMethodSpike30msCount { get; private set; }
+        public static int StageMethodSpike80msCount { get; private set; }
+        public static int StageMethodSpikeWithGcCount { get; private set; }
+
+        public static int StageFrameStall33msCount { get; private set; }
+        public static int StageFrameStall50msCount { get; private set; }
+        public static int StageFrameStall80msCount { get; private set; }
+        public static float StageMaxFrameMs { get; private set; }
+        public static float StageMinRollingFps { get; private set; }
+
+        public static int StageGcGen0Delta { get; private set; }
+        public static int StageGcGen1Delta { get; private set; }
+        public static int StageGcGen2Delta { get; private set; }
+        private static int _lastGc0;
+        private static int _lastGc1;
+        private static int _lastGc2;
+
+        // UseSkill.OnEnterRoom スパイク内訳記録用
+        public static double LastOverloadCallMs;
 
         public static void EnterParentScope(out long savedChildTicks)
         {
@@ -273,7 +299,7 @@ namespace LobotomyModernEngine.Core
         }
 
         /// <summary>
-        /// WorkerAI の内部細分化メトリック (3c〜3f) 用の記録メソッド。
+        /// WorkerAI の内部細分化メトリック (3c〜3g) 用の記録メソッド。
         /// 親メトリック (WorkerAI) の _currentParentChildTicks には加算せず、内訳として独立計測する。
         /// </summary>
         public static double RecordSubMetric(Metric subMetric, long startTimestamp)
@@ -285,6 +311,11 @@ namespace LobotomyModernEngine.Core
 
         public static void LogSpikeEvent(string category, double inclusiveMs, double exclusiveMs, int gcGen0Delta, string detail)
         {
+            StageMethodSpike5msCount++;
+            if (inclusiveMs >= 30.0) StageMethodSpike30msCount++;
+            if (inclusiveMs >= 80.0) StageMethodSpike80msCount++;
+            if (gcGen0Delta > 0) StageMethodSpikeWithGcCount++;
+
             if (Plugin.Logger == null) return;
             if (Plugin.EnableProfilerLog != null && !Plugin.EnableProfilerLog.Value) return;
 
@@ -309,15 +340,67 @@ namespace LobotomyModernEngine.Core
         public static float TotalExclusiveMsPerSec { get; private set; }
         public static float TotalExclusiveMsPerFrame { get; private set; }
 
+        private static bool IsCurrentlyPlaying()
+        {
+            try
+            {
+                return GameManager.currentGameManager != null &&
+                       GameManager.currentGameManager.ManageStarted &&
+                       GameManager.currentGameManager.state == GameState.PLAYING;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static void Update(float unscaledTime)
         {
             _frameCounter++;
+
+            // PLAYING 中のフレームタイムスパイク・GC差分を毎フレーム追跡
+            int curGc0 = GC.CollectionCount(0);
+            int curGc1 = GC.CollectionCount(1);
+            int curGc2 = GC.CollectionCount(2);
+
+            if (IsCurrentlyPlaying())
+            {
+                float dtMs = UnityEngine.Time.unscaledDeltaTime * 1000f;
+                // シーンロード直後の異常値を除外 (0 < dtMs < 5000ms)
+                if (dtMs > 0f && dtMs < 5000f)
+                {
+                    if (dtMs > StageMaxFrameMs) StageMaxFrameMs = dtMs;
+                    if (dtMs >= 33.3f) StageFrameStall33msCount++;
+                    if (dtMs >= 50.0f) StageFrameStall50msCount++;
+                    if (dtMs >= 80.0f) StageFrameStall80msCount++;
+                }
+
+                if (_lastGc0 > 0)
+                {
+                    if (curGc0 > _lastGc0) StageGcGen0Delta += (curGc0 - _lastGc0);
+                    if (curGc1 > _lastGc1) StageGcGen1Delta += (curGc1 - _lastGc1);
+                    if (curGc2 > _lastGc2) StageGcGen2Delta += (curGc2 - _lastGc2);
+                }
+            }
+            _lastGc0 = curGc0;
+            _lastGc1 = curGc1;
+            _lastGc2 = curGc2;
+
             float elapsed = unscaledTime - _lastSampleTime;
             if (elapsed >= 1.0f)
             {
                 int frames = _frameCounter;
                 _frameCounter = 0;
                 _lastSampleTime = unscaledTime;
+
+                float rollingFps = elapsed > 0.001f ? (frames / elapsed) : 0f;
+                if (IsCurrentlyPlaying() && _stageActivePlayingSeconds >= 1.0f && rollingFps > 0.1f)
+                {
+                    if (StageMinRollingFps <= 0.1f || rollingFps < StageMinRollingFps)
+                    {
+                        StageMinRollingFps = rollingFps;
+                    }
+                }
 
                 float sumExclSec = 0f;
                 float sumExclFrame = 0f;
@@ -337,6 +420,29 @@ namespace LobotomyModernEngine.Core
 
                 CheckAndEmitPeriodicLog(unscaledTime, elapsed);
             }
+        }
+
+        private static void ResetStageComparisonCounters()
+        {
+            StageMethodSpike5msCount = 0;
+            StageMethodSpike30msCount = 0;
+            StageMethodSpike80msCount = 0;
+            StageMethodSpikeWithGcCount = 0;
+            StageFrameStall33msCount = 0;
+            StageFrameStall50msCount = 0;
+            StageFrameStall80msCount = 0;
+            StageMaxFrameMs = 0f;
+            StageMinRollingFps = 0f;
+            StageGcGen0Delta = 0;
+            StageGcGen1Delta = 0;
+            StageGcGen2Delta = 0;
+            _lastGc0 = GC.CollectionCount(0);
+            _lastGc1 = GC.CollectionCount(1);
+            _lastGc2 = GC.CollectionCount(2);
+
+            UnitBufStatePatch.ResetStageMetrics();
+            SoundEffectCachePatch.ResetStageMetrics();
+            PathfindingBufferPatch.ResetStageMetrics();
         }
 
         private static void CheckAndEmitPeriodicLog(float unscaledTime, float sampleElapsedSeconds)
@@ -367,6 +473,7 @@ namespace LobotomyModernEngine.Core
                 _wasStageActive = true;
                 _stageActivePlayingSeconds = 0f;
                 _lastLogTime = unscaledTime;
+                ResetStageComparisonCounters();
                 for (int i = 0; i < AllMetrics.Length; i++)
                 {
                     AllMetrics[i].ResetStageOnly();
@@ -441,7 +548,7 @@ namespace LobotomyModernEngine.Core
                     if (oList != null) ordeals = oList.Length;
                 }
 
-                StringBuilder sb = new StringBuilder(1024);
+                StringBuilder sb = new StringBuilder(1280);
                 sb.AppendFormat(
                     "[LME CPU実測 Day:{0} Speed:{1}x | 職員:{2} オフィサー:{3} 幻想体:{4}(脱走:{5}) 試練:{6} | 純粋合計:{7:F2}ms/s ({8:F2}ms/f)]",
                     day, speed, agents, officers, creatures, escaped, ordeals,
@@ -454,7 +561,7 @@ namespace LobotomyModernEngine.Core
                     AppendMetricSnapshotLine(sb, "  - ", m);
                     sb.AppendLine();
 
-                    // 3.職員AI更新 の直下に 3a〜3f の内部細分化内訳を出力
+                    // 3.職員AI更新 の直下に 3a〜3g の内部細分化内訳を出力
                     if (m == WorkerAI)
                     {
                         for (int j = 0; j < WorkerSubMetrics.Length; j++)
@@ -494,7 +601,8 @@ namespace LobotomyModernEngine.Core
 
             try
             {
-                StringBuilder sb = new StringBuilder(1024);
+                float minInstantFps = StageMaxFrameMs > 0.1f ? (1000f / StageMaxFrameMs) : 0f;
+                StringBuilder sb = new StringBuilder(1536);
                 sb.AppendFormat("=== [LME CPU実測 ステージ通算サマリー (実稼働PLAYING時間: {0:F1}秒)] ===", totalStageSeconds);
                 sb.AppendLine();
                 for (int i = 0; i < AllMetrics.Length; i++)
@@ -509,6 +617,40 @@ namespace LobotomyModernEngine.Core
                         }
                     }
                 }
+
+                sb.AppendLine("  --- [LME v0.8.4 変更前後比較指標 (スパイク回数 / GC / 最低FPS / キャッシュ効果)] ---");
+                sb.AppendFormat(
+                    "  * [フレーム・最低FPS] 最大フレーム時間: {0:F2}ms (瞬間最低FPS: {1:F1} FPS / 1秒平均最低FPS: {2:F1} FPS) | フレーム停止回数 (>=33.3ms: {3}回, >=50ms: {4}回, >=80ms[90ms級]: {5}回)",
+                    StageMaxFrameMs, minInstantFps, StageMinRollingFps,
+                    StageFrameStall33msCount, StageFrameStall50msCount, StageFrameStall80msCount).AppendLine();
+                sb.AppendFormat(
+                    "  * [メソッドスパイク・GC] メソッドスパイク検知 (>=5ms: {0}回 [うちGC伴う: {1}回], >=30ms: {2}回, >=80ms[90ms級]: {3}回) | PLAYING中GC発生: Gen0 +{4}回 ({5:F2}回/分), Gen1 +{6}回, Gen2 +{7}回",
+                    StageMethodSpike5msCount, StageMethodSpikeWithGcCount, StageMethodSpike30msCount, StageMethodSpike80msCount,
+                    StageGcGen0Delta, totalStageSeconds > 0.1f ? (StageGcGen0Delta * 60.0f / totalStageSeconds) : 0f,
+                    StageGcGen1Delta, StageGcGen2Delta).AppendLine();
+                sb.AppendFormat(
+                    "  * [1.UpdateBufState削減] 総呼出: {0}回 | 空リスト配列確保回避: {1}回 | バッファ再利用スナップショット: {2}回 (最大同時バフ数: {3})",
+                    UnitBufStatePatch.TotalCallCount,
+                    UnitBufStatePatch.AvoidedEmptyAllocations,
+                    UnitBufStatePatch.AvoidedActiveSnapshotAllocations,
+                    UnitBufStatePatch.MaxActiveBufCountSeen).AppendLine();
+                sb.AppendFormat(
+                    "  * [2.音声ロードキャッシュ] 要求: {0}回 | PositiveHit: {1}回 | NegativeHit(不在アセット再検索回避): {2}回 | SoundTable不在キー早期回避: {3}回 | 実Resources.Load: {4}回 (総計: {5:F2}ms, 最大: {6:F2}ms, 保持Clip: {7}個)",
+                    SoundEffectCachePatch.TotalSoundRequestCount,
+                    SoundEffectCachePatch.PositiveCacheHits,
+                    SoundEffectCachePatch.NegativeCacheHits,
+                    SoundEffectCachePatch.MissingSoundTableKeyHits,
+                    SoundEffectCachePatch.ColdResourcesLoadCount,
+                    SoundEffectCachePatch.ColdResourcesLoadTotalMs,
+                    SoundEffectCachePatch.ColdResourcesLoadMaxMs,
+                    SoundEffectCachePatch.CachedClipCount).AppendLine();
+                sb.AppendFormat(
+                    "  * [3.経路探索バッファ再利用] 再利用探索: {0}回 (再帰フォールバック: {1}回) | PathScore再利用: {2}個 | SearchInfo再利用: {3}個",
+                    PathfindingBufferPatch.ReusedSearchCallCount,
+                    PathfindingBufferPatch.ReentrantFallbackCount,
+                    PathfindingBufferPatch.ReusedPathScoreCount,
+                    PathfindingBufferPatch.ReusedSearchInfoCount);
+
                 Plugin.Logger.LogInfo(sb.ToString().TrimEnd());
             }
             catch { }
@@ -527,6 +669,7 @@ namespace LobotomyModernEngine.Core
             _currentParentChildTicks = 0L;
             TotalExclusiveMsPerSec = 0f;
             TotalExclusiveMsPerFrame = 0f;
+            ResetStageComparisonCounters();
             for (int i = 0; i < AllMetrics.Length; i++)
             {
                 AllMetrics[i].Reset();

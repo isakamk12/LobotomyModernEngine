@@ -182,8 +182,8 @@ namespace LobotomyModernEngine.Diagnostics
                 return;
             }
 
-            float width = 620f;
-            float height = 755f;
+            float width = 640f;
+            float height = 820f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -315,6 +315,37 @@ namespace LobotomyModernEngine.Diagnostics
                 noticeActive ? _goodStyle : _labelStyle,
                 EmptyOptions);
 
+            bool bufOptActive = UnitBufStatePatch.AvoidedEmptyAllocations > 0 || UnitBufStatePatch.AvoidedActiveSnapshotAllocations > 0;
+            GUILayout.Label(
+                string.Format("• [{0}] ⑤UpdateBufState最適化: 空回避 {1}回 / 再利用スナップショット {2}回",
+                    bufOptActive ? "実働確認" : "未発生/待機中",
+                    UnitBufStatePatch.AvoidedEmptyAllocations,
+                    UnitBufStatePatch.AvoidedActiveSnapshotAllocations),
+                bufOptActive ? _goodStyle : _labelStyle,
+                EmptyOptions);
+
+            bool sndOptActive = SoundEffectCachePatch.PositiveCacheHits > 0 || SoundEffectCachePatch.NegativeCacheHits > 0 || SoundEffectCachePatch.MissingSoundTableKeyHits > 0 || SoundEffectCachePatch.ColdResourcesLoadCount > 0;
+            GUILayout.Label(
+                string.Format("• [{0}] ⑥音声キャッシュ: Hit {1}回 / 不在回避 {2}回(Key不在:{3}) / 実Load {4}回({5:F1}ms)",
+                    sndOptActive ? "実働確認" : "未発生/待機中",
+                    SoundEffectCachePatch.PositiveCacheHits,
+                    SoundEffectCachePatch.NegativeCacheHits,
+                    SoundEffectCachePatch.MissingSoundTableKeyHits,
+                    SoundEffectCachePatch.ColdResourcesLoadCount,
+                    SoundEffectCachePatch.ColdResourcesLoadTotalMs),
+                sndOptActive ? _goodStyle : _labelStyle,
+                EmptyOptions);
+
+            bool pathOptActive = PathfindingBufferPatch.ReusedSearchCallCount > 0;
+            GUILayout.Label(
+                string.Format("• [{0}] ⑦経路探索バッファ再利用: {1}回 (Score再利用 {2}個 / Info再利用 {3}個)",
+                    pathOptActive ? "実働確認" : "未発生/待機中",
+                    PathfindingBufferPatch.ReusedSearchCallCount,
+                    PathfindingBufferPatch.ReusedPathScoreCount,
+                    PathfindingBufferPatch.ReusedSearchInfoCount),
+                pathOptActive ? _goodStyle : _labelStyle,
+                EmptyOptions);
+
             GUILayout.Space(3f);
 
             // 3. バニラバグ修正・UI改善・育成緩和の稼働状況
@@ -408,15 +439,15 @@ namespace LobotomyModernEngine.Diagnostics
                 if (m == GameProfiler.WorkerAI)
                 {
                     GUILayout.Label(
-                        string.Format("   └ [内訳] 3a.Agent:{0:F2}ms/s(自己{1:F2}) | 3b.Officer:{2:F2}ms/s(自己{3:F2}) | 3c.Buf:{4:F2}ms/s | 3d.Skill:{5:F2}ms/s | 3e.暴走:{6:F2}ms/s | 3f.OffAI:{7:F2}ms/s",
+                        string.Format("   └ [内訳] 3a.Ag:{0:F2}(自{1:F2}) | 3b.Of:{2:F2} | 3c.Buf:{3:F2} | 3d.Skl:{4:F2}(入室{5:F2}) | 3e.暴走:{6:F2} | 3g.音:{7:F2}",
                             GameProfiler.SubAgentUpdate.TotalMsPerSec,
                             GameProfiler.SubAgentUpdate.ExclusiveMsPerSec,
                             GameProfiler.SubOfficerUpdate.TotalMsPerSec,
-                            GameProfiler.SubOfficerUpdate.ExclusiveMsPerSec,
                             GameProfiler.SubUpdateBufState.TotalMsPerSec,
                             GameProfiler.SubUseSkill.TotalMsPerSec,
+                            GameProfiler.SubEnterRoom.TotalMsPerSec,
                             GameProfiler.SubOverloadOrdeal.TotalMsPerSec,
-                            GameProfiler.SubOfficerNormalAI.TotalMsPerSec),
+                            GameProfiler.SubSoundLoad.TotalMsPerSec),
                         _labelStyle,
                         EmptyOptions);
                 }

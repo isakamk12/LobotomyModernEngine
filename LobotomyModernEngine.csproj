@@ -50,6 +50,10 @@
       <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>E:\SteamLibrary\steamapps\common\LobotomyCorp\LobotomyCorp_Data\Managed\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
