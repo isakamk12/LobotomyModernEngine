@@ -378,14 +378,15 @@ namespace LobotomyModernEngine.Diagnostics
                 if (m.HasNestedChildren)
                 {
                     GUILayout.Label(
-                        string.Format("• {0}: {1}累積 {2:F2}ms/s (自己 {3:F2}ms/s)</color> | 1回 {4:F1}μs | {5}回/s | 最大 {6:F2}ms",
+                        string.Format("• {0}: {1}累積 {2:F2}ms/s (自己 {3:F2}ms/s)</color> | 1回 {4:F1}μs | {5}回/s | 最大 {6:F2}ms (自己 {7:F2}ms)",
                             m.DisplayName,
                             colorTag,
                             m.TotalMsPerSec,
                             m.ExclusiveMsPerSec,
                             m.AvgUsPerCall,
                             m.CallsPerSec,
-                            m.MaxMsPerCall),
+                            m.MaxMsPerCall,
+                            m.MaxExclusiveMsPerCall),
                         _labelStyle,
                         EmptyOptions);
                 }
@@ -400,6 +401,22 @@ namespace LobotomyModernEngine.Diagnostics
                             m.AvgUsPerCall,
                             m.CallsPerSec,
                             m.MaxMsPerCall),
+                        _labelStyle,
+                        EmptyOptions);
+                }
+
+                if (m == GameProfiler.WorkerAI)
+                {
+                    GUILayout.Label(
+                        string.Format("   └ [内訳] 3a.Agent:{0:F2}ms/s(自己{1:F2}) | 3b.Officer:{2:F2}ms/s(自己{3:F2}) | 3c.Buf:{4:F2}ms/s | 3d.Skill:{5:F2}ms/s | 3e.暴走:{6:F2}ms/s | 3f.OffAI:{7:F2}ms/s",
+                            GameProfiler.SubAgentUpdate.TotalMsPerSec,
+                            GameProfiler.SubAgentUpdate.ExclusiveMsPerSec,
+                            GameProfiler.SubOfficerUpdate.TotalMsPerSec,
+                            GameProfiler.SubOfficerUpdate.ExclusiveMsPerSec,
+                            GameProfiler.SubUpdateBufState.TotalMsPerSec,
+                            GameProfiler.SubUseSkill.TotalMsPerSec,
+                            GameProfiler.SubOverloadOrdeal.TotalMsPerSec,
+                            GameProfiler.SubOfficerNormalAI.TotalMsPerSec),
                         _labelStyle,
                         EmptyOptions);
                 }

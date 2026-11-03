@@ -362,7 +362,7 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(TakeDamagePatch.TakeDamageWithoutEffect_Transpiler), "TakeDamageWithoutEffect (Zero-Barrier Transpiler)");
                 }
 
-                // Phase C: 主要処理リアルタイムCPUプロファイラ (実測値計測)
+                // Phase C: 主要処理リアルタイムCPUプロファイラ (実測値計測 & WorkerAI内部細分化)
                 if (EnableCpuProfiler.Value)
                 {
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.SearchPath_ProfilePatch), "Profiler (GraphAstar SearchPath)");
@@ -371,6 +371,10 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.AgentModel_OnFixedUpdate_ProfilePatch), "Profiler (AgentModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.OfficerModel_OnFixedUpdate_ProfilePatch), "Profiler (OfficerModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.WorkerModel_OnFixedUpdate_ProfilePatch), "Profiler (WorkerModel FixedUpdate)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.UnitModel_UpdateBufState_ProfilePatch), "Profiler (WorkerSub 3c: UpdateBufState)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.UseSkill_OnFixedUpdate_ProfilePatch), "Profiler (WorkerSub 3d: UseSkill FixedUpdate)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.CreatureOverloadManager_AddOverloadGague_ProfilePatch), "Profiler (WorkerSub 3e: AddOverloadGague/Ordeal)");
+                    ApplyAndVerifyPatch(typeof(ProfilerPatch.OfficerModel_ProcessActionNormalOfficer_ProfilePatch), "Profiler (WorkerSub 3f: OfficerNormalAI)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.CreatureModel_OnFixedUpdate_ProfilePatch), "Profiler (CreatureModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.OrdealCreatureModel_OnFixedUpdate_ProfilePatch), "Profiler (OrdealCreatureModel FixedUpdate)");
                     ApplyAndVerifyPatch(typeof(ProfilerPatch.MovableObjectNode_ProcessMoveNode_ProfilePatch), "Profiler (MovableObjectNode ProcessMoveNode)");
@@ -490,6 +494,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.8.2";
+        public const string PLUGIN_VERSION = "0.8.3";
     }
 }
