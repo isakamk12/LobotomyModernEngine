@@ -60,6 +60,7 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> EnableWorkerPortraitOptimization;
         public static ConfigEntry<bool> EnableWorkerListCache;
         public static ConfigEntry<bool> EnableSpineOptimizerCache;
+        public static ConfigEntry<bool> EnableSmoothSpineAnimation;
         public static ConfigEntry<bool> EnableDebugStarterGearBuff;
         public static ConfigEntry<bool> EnableNoticeCopyOnWrite;
         public static ConfigEntry<bool> EnableZeroBarrierOptimization;
@@ -122,6 +123,7 @@ namespace LobotomyModernEngine
             EnableWorkerPortraitOptimization = Config.Bind("Optimization", "WorkerPortraitOptimization", true, "WorkerPortraitSetter.LateUpdate の毎フレーム全再構築抑止 (表示状態Dirty検知＆所要時間計測)");
             EnableWorkerListCache = Config.Bind("Optimization", "WorkerListCache", true, "AgentManager/OfficerManager の ReadOnlyCollection 毎フレーム生成をゼロアロケーション化");
             EnableSpineOptimizerCache = Config.Bind("Optimization", "SpineOptimizerCache", true, "SpineOptimizerModule/WorkerUnit の毎フレーム Camera.main タグ検索を1フレーム1回に共有化");
+            EnableSmoothSpineAnimation = Config.Bind("Optimization", "SmoothSpineAnimation", true, "カメラを少し引いただけで画面内の職員・オフィサーの手足アニメーションが15〜30FPSへコマ落ち(optimizeLevel)するのを緩和し、通常のプレイ視野内では60FPSフルアニメーションで滑らかに歩かせる");
             EnableNoticeCopyOnWrite = Config.Bind("Optimization", "NoticeCopyOnWrite", true, "Notice.Send の Copy-on-Write ゼロアロケーション化");
             EnableZeroBarrierOptimization = Config.Bind("Optimization", "ZeroBarrierOptimization", true, "TakeDamage & TakeDamageWithoutEffect のバリア0件時アロケーション消去 (IL Transpiler)");
             EnableWorkerSpriteCache = Config.Bind("Optimization", "WorkerSpriteCache", true, "WorkerSpriteSetter の GetComponent キャッシュ化");

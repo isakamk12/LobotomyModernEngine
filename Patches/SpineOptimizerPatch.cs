@@ -103,16 +103,28 @@ namespace LobotomyModernEngine.Patches
                     }
 
                     float num = (_orthoSize / scale) / (____loosenessLevel > 0.0001f ? ____loosenessLevel : 1f);
-                    if (num > 80f)
-                        ____spineRenderer.optimizeLevel = 4;
-                    else if (num > 50f)
-                        ____spineRenderer.optimizeLevel = 3;
-                    else if (num > 30f)
-                        ____spineRenderer.optimizeLevel = 2;
-                    else if (num > 25f)
-                        ____spineRenderer.optimizeLevel = 1;
+                    if (Plugin.EnableSmoothSpineAnimation.Value)
+                    {
+                        if (num > 85f)
+                            ____spineRenderer.optimizeLevel = 3;
+                        else if (num > 65f)
+                            ____spineRenderer.optimizeLevel = 1;
+                        else
+                            ____spineRenderer.optimizeLevel = 0;
+                    }
                     else
-                        ____spineRenderer.optimizeLevel = 0;
+                    {
+                        if (num > 80f)
+                            ____spineRenderer.optimizeLevel = 4;
+                        else if (num > 50f)
+                            ____spineRenderer.optimizeLevel = 3;
+                        else if (num > 30f)
+                            ____spineRenderer.optimizeLevel = 2;
+                        else if (num > 25f)
+                            ____spineRenderer.optimizeLevel = 1;
+                        else
+                            ____spineRenderer.optimizeLevel = 0;
+                    }
                 }
 
                 return false;
@@ -181,16 +193,29 @@ namespace LobotomyModernEngine.Patches
                     }
 
                     float num2 = _orthoSize / scale;
-                    if (num2 > 80f)
-                        __instance.spineRenderer.optimizeLevel = 4;
-                    else if (num2 > 50f)
-                        __instance.spineRenderer.optimizeLevel = 3;
-                    else if (num2 > 30f)
-                        __instance.spineRenderer.optimizeLevel = 2;
-                    else if (num2 > 25f)
-                        __instance.spineRenderer.optimizeLevel = 1;
+                    if (Plugin.EnableSmoothSpineAnimation.Value)
+                    {
+                        // 視界内の職員は通常視野 (orthoSize <= 55) では間引かず60FPSフル更新
+                        if (num2 > 85f)
+                            __instance.spineRenderer.optimizeLevel = 3;
+                        else if (num2 > 65f)
+                            __instance.spineRenderer.optimizeLevel = 1;
+                        else
+                            __instance.spineRenderer.optimizeLevel = 0;
+                    }
                     else
-                        __instance.spineRenderer.optimizeLevel = 0;
+                    {
+                        if (num2 > 80f)
+                            __instance.spineRenderer.optimizeLevel = 4;
+                        else if (num2 > 50f)
+                            __instance.spineRenderer.optimizeLevel = 3;
+                        else if (num2 > 30f)
+                            __instance.spineRenderer.optimizeLevel = 2;
+                        else if (num2 > 25f)
+                            __instance.spineRenderer.optimizeLevel = 1;
+                        else
+                            __instance.spineRenderer.optimizeLevel = 0;
+                    }
                 }
 
                 return false;
@@ -234,18 +259,31 @@ namespace LobotomyModernEngine.Patches
                     }
 
                     float num2 = _orthoSize / scale;
-                    if (num2 > 70f)
-                        __instance.spineRenderer.optimizeLevel = 5;
-                    else if (num2 > 45f)
-                        __instance.spineRenderer.optimizeLevel = 4;
-                    else if (num2 > 35f)
-                        __instance.spineRenderer.optimizeLevel = 3;
-                    else if (num2 > 30f)
-                        __instance.spineRenderer.optimizeLevel = 2;
-                    else if (num2 > 22f)
-                        __instance.spineRenderer.optimizeLevel = 1;
+                    if (Plugin.EnableSmoothSpineAnimation.Value)
+                    {
+                        // 視界内のオフィサーも通常視野ではフルアニメーション
+                        if (num2 > 85f)
+                            __instance.spineRenderer.optimizeLevel = 3;
+                        else if (num2 > 65f)
+                            __instance.spineRenderer.optimizeLevel = 1;
+                        else
+                            __instance.spineRenderer.optimizeLevel = 0;
+                    }
                     else
-                        __instance.spineRenderer.optimizeLevel = 0;
+                    {
+                        if (num2 > 70f)
+                            __instance.spineRenderer.optimizeLevel = 5;
+                        else if (num2 > 45f)
+                            __instance.spineRenderer.optimizeLevel = 4;
+                        else if (num2 > 35f)
+                            __instance.spineRenderer.optimizeLevel = 3;
+                        else if (num2 > 30f)
+                            __instance.spineRenderer.optimizeLevel = 2;
+                        else if (num2 > 22f)
+                            __instance.spineRenderer.optimizeLevel = 1;
+                        else
+                            __instance.spineRenderer.optimizeLevel = 0;
+                    }
                 }
 
                 return false;
