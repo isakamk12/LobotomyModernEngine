@@ -70,6 +70,7 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> EnablePassableOptimization;
         public static ConfigEntry<bool> EnableUnitBufOptimization;
         public static ConfigEntry<bool> EnableSoundEffectCache;
+        public static ConfigEntry<bool> EnableSoundPrewarming;
         public static ConfigEntry<bool> EnablePathfindingBufferReuse;
         public static ConfigEntry<bool> EnableAgentUIOptimization;
         public static ConfigEntry<bool> EnableMovementInterpolation;
@@ -132,6 +133,7 @@ namespace LobotomyModernEngine
             EnablePassableOptimization = Config.Bind("Optimization", "PassableOptimization", true, "CheckPassable の走査最適化");
             EnableUnitBufOptimization = Config.Bind("Optimization", "UnitBufOptimization", true, "UnitModel.UpdateBufState の空リスト配列確保削減およびスナップショットバッファ再利用");
             EnableSoundEffectCache = Config.Bind("Optimization", "SoundEffectCache", true, "SoundEffectPlayer / CreatureUnit.PlaySound の AudioClip キャッシュ化および不在音声キーの再検索・エラーログ削減");
+            EnableSoundPrewarming = Config.Bind("Optimization", "SoundPrewarming", true, "配置済み幻想体のsoundTableおよび職員共通音声をステージ開始時に非同期・フレーム分散プリウォームし、初回再生スパイクを防止");
             EnablePathfindingBufferReuse = Config.Bind("Optimization", "PathfindingBufferReuse", true, "GraphAstar.SearchPath の探索コレクション・PathScore/SearchInfo プール再利用 (状態完全リセット＆再帰安全ガード付)");
             EnableAgentUIOptimization = Config.Bind("Optimization", "AgentUIOptimization", true, "イェソド解放時の毎フレーム AgentUnitUI.activateUI 呼び出し・文字列結合・Textレイアウト幅計算を Dirty 検知化して GC スパイクを根絶");
             EnableMovementInterpolation = Config.Bind("Optimization", "MovementInterpolation", true, "FixedUpdate(50Hz) と描画(60Hz+) のズレによる歩行カクつきを解消する描画専用の線形位置補間");
@@ -392,6 +394,12 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(SoundEffectCachePatch.CreatureUnit_PlaySoundLoop2_Patch), "SoundEffectCache (CreatureUnit PlaySoundLoop(key,vol))");
                 }
 
+                // v0.8.6: 音声事前ロード (配置済み幻想体 + 職員共通効果音の非同期分散プリウォーム)
+                if (EnableSoundPrewarming.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(SoundPrewarmPatch.GameManager_StartStage_PrewarmPatch), "SoundPrewarm (Async Frame-Budgeted Prewarm)");
+                }
+
                 // v0.8.4 優先度3: 経路探索 (GraphAstar.SearchPath) バッファ再利用 (状態完全リセット＆再帰安全ガード付)
                 if (EnablePathfindingBufferReuse.Value)
                 {
@@ -552,6 +560,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.8.5";
+        public const string PLUGIN_VERSION = "0.8.6";
     }
 }

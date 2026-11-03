@@ -618,16 +618,26 @@ namespace LobotomyModernEngine.Core
                     }
                 }
 
-                sb.AppendLine("  --- [LME v0.8.5 変更前後比較指標 (スパイク回数 / GC / 最低FPS / 移動補間 / UI削減効果)] ---");
+                sb.AppendLine("  --- [LME v0.8.6 変更前後比較指標 (スパイク回数 / GC / 最低FPS / 100秒換算 / プリウォーム)] ---");
+                float per100s = totalStageSeconds > 0.1f ? (100.0f / totalStageSeconds) : 0f;
                 sb.AppendFormat(
-                    "  * [フレーム・最低FPS] 最大フレーム時間: {0:F2}ms (瞬間最低FPS: {1:F1} FPS / 1秒平均最低FPS: {2:F1} FPS) | フレーム停止回数 (>=33.3ms: {3}回, >=50ms: {4}回, >=80ms[90ms級]: {5}回)",
+                    "  * [フレーム・最低FPS] 最大フレーム時間: {0:F2}ms (瞬間最低FPS: {1:F1} FPS / 1秒平均最低FPS: {2:F1} FPS) | フレーム停止回数 (>=33.3ms: {3}回 [{4:F1}回/100s], >=50ms: {5}回 [{6:F1}回/100s], >=80ms[90ms級]: {7}回 [{8:F1}回/100s])",
                     StageMaxFrameMs, minInstantFps, StageMinRollingFps,
-                    StageFrameStall33msCount, StageFrameStall50msCount, StageFrameStall80msCount).AppendLine();
+                    StageFrameStall33msCount, StageFrameStall33msCount * per100s,
+                    StageFrameStall50msCount, StageFrameStall50msCount * per100s,
+                    StageFrameStall80msCount, StageFrameStall80msCount * per100s).AppendLine();
                 sb.AppendFormat(
-                    "  * [メソッドスパイク・GC] メソッドスパイク検知 (>=5ms: {0}回 [うちGC伴う: {1}回], >=30ms: {2}回, >=80ms[90ms級]: {3}回) | PLAYING中GC発生: Gen0 +{4}回 ({5:F2}回/分), Gen1 +{6}回, Gen2 +{7}回",
-                    StageMethodSpike5msCount, StageMethodSpikeWithGcCount, StageMethodSpike30msCount, StageMethodSpike80msCount,
+                    "  * [メソッドスパイク・GC] メソッドスパイク検知 (>=5ms: {0}回 [{1:F1}回/100s, うちGC伴う: {2}回], >=30ms: {3}回 [{4:F1}回/100s], >=80ms[90ms級]: {5}回) | PLAYING中GC発生: Gen0 +{6}回 ({7:F2}回/分), Gen1 +{8}回, Gen2 +{9}回",
+                    StageMethodSpike5msCount, StageMethodSpike5msCount * per100s, StageMethodSpikeWithGcCount,
+                    StageMethodSpike30msCount, StageMethodSpike30msCount * per100s, StageMethodSpike80msCount,
                     StageGcGen0Delta, totalStageSeconds > 0.1f ? (StageGcGen0Delta * 60.0f / totalStageSeconds) : 0f,
                     StageGcGen1Delta, StageGcGen2Delta).AppendLine();
+                sb.AppendFormat(
+                    "  * [v0.8.6 音声プリウォーム] 保持Clip数: {0}個 | 事前ロード登録: {1}個 | プレイ中ColdLoad: {2}回 (最大: {3:F2}ms)",
+                    SoundEffectCachePatch.CachedClipCount,
+                    SoundEffectCachePatch.PrewarmedClipCount,
+                    SoundEffectCachePatch.ColdResourcesLoadCount,
+                    SoundEffectCachePatch.ColdResourcesLoadMaxMs).AppendLine();
                 sb.AppendFormat(
                     "  * [v0.8.5 UI更新削減] activateUI 要求: {0}回 | スキップ回避: {1}回 | 実更新: {2}回",
                     AgentUIOptimizationPatch.AvoidedActivateUICalls + AgentUIOptimizationPatch.RealActivateUICalls,

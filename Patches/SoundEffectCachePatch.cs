@@ -50,9 +50,35 @@ namespace LobotomyModernEngine.Patches
         public static double LastSoundCallMs = 0.0;
         public static double LastColdLoadMs = 0.0;
         public static int TranspiledMethodCount = 0;
+        public static long PrewarmedClipCount = 0;
 
         public static int CachedClipCount => AudioClipCache.Count;
         public static int CachedMissingPathCount => MissingAudioFiles.Count;
+
+        /// <summary>
+        /// v0.8.6: 既存キャッシュへの直接登録（プリウォーム用）
+        /// </summary>
+        public static bool RegisterPrewarmedClip(string cacheKey, AudioClip clip)
+        {
+            if (string.IsNullOrEmpty(cacheKey)) return false;
+            if (clip != null)
+            {
+                AudioClipCache[cacheKey] = clip;
+                PrewarmedClipCount++;
+                return true;
+            }
+            else
+            {
+                MissingAudioFiles.Add(cacheKey);
+                return false;
+            }
+        }
+
+        public static bool IsCached(string cacheKey)
+        {
+            if (string.IsNullOrEmpty(cacheKey)) return false;
+            return MissingAudioFiles.Contains(cacheKey) || AudioClipCache.ContainsKey(cacheKey);
+        }
 
         /// <summary>
         /// SoundEffectPlayer 内の String.Concat("Sounds/", filename) + Resources.Load&lt;AudioClip&gt; を置換するエントリ
