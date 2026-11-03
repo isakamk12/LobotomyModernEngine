@@ -19,6 +19,24 @@ namespace LobotomyModernEngine.Patches
         private static float _halfHeight;
         private static bool _isGameStopped;
 
+        public static void UpdateUnitInCamera(WorkerUnit unit, Vector3 newPosition)
+        {
+            if (unit == null) return;
+            if (!EnsureFrameSnapshot()) return;
+
+            float dx = newPosition.x - _camPos.x;
+            float dy = newPosition.y - _camPos.y;
+            float limitX = _halfWidth + 1.5f;
+            float limitY = _halfHeight + 1.5f;
+
+            bool inCam = dx < limitX && dx > -limitX && dy < limitY && dy > -limitY;
+            var prop = AccessTools.Field(typeof(WorkerUnit), "_inCamera");
+            if (prop != null)
+            {
+                prop.SetValue(unit, inCam);
+            }
+        }
+
         public static long AvoidedCameraLookups { get; private set; }
 
         public static void ClearCache()

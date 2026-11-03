@@ -172,6 +172,10 @@ namespace LobotomyModernEngine.Patches
                     __instance.transform.localPosition = renderPos;
                 }
 
+                // 【最重要】バニラ必須処理: カメラ内判定を直接更新しないと _inCamera=false になり
+                // 全ユニットが optimizeLevel=5 (7.5FPSの超絶ガクガクコマ落ち) に固定されてしまう
+                SpineOptimizerPatch.UpdateUnitInCamera(__instance, renderPos);
+
                 return false; // バニラの UpdateViewPosition を完全代替
             }
         }
