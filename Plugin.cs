@@ -189,6 +189,10 @@ namespace LobotomyModernEngine
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentDataLoader_Load_Patch), "DebugGearBuff (Starter & Penitence Gear Hook)");
                 ApplyAndVerifyPatch(typeof(DebugGearBuffPatch.EquipmentScriptBase_OnGiveDamage_Patch), "DebugGearBuff (Dynamic Weakness OnGiveDamage Hook)");
 
+                // デバッグ：初期・雇用ランク5職員パッチ
+                ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.AgentModel_GetDefaultStat_Patch), "DebugAgentBuff (DefaultStat Rank 5 Hook)");
+                ApplyAndVerifyPatch(typeof(DebugAgentBuffPatch.CustomizingWindow_SetAgentStatBonus_Patch), "DebugAgentBuff (Customizing Rank 5 Hook)");
+
                 // デバッグ強化LOBポイント一律1パッチ
                 StatUpgradeCostPatch.SyncStaticArrays();
                 ApplyAndVerifyPatch(typeof(StatUpgradeCostPatch.StatUI_Init0_Patch), "DebugStatCost (StatUI Cost Array Hook)");
@@ -401,6 +405,8 @@ namespace LobotomyModernEngine
 
             // 既にEquipmentTypeListがロード済みならデバッグ装備状態をConfigに同期
             DebugGearBuffPatch.SyncWithConfig();
+            DebugAgentBuffPatch.ClearCache();
+            DebugAgentBuffPatch.SyncWithConfig();
 
             // 【v0.7.6 安全なリソース解放コルーチン】
             // SceneManager.sceneLoaded 直後は旧シーンの GameObject 破棄キューが未処理の可能性がある。
@@ -479,6 +485,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.7.9";
+        public const string PLUGIN_VERSION = "0.8.0";
     }
 }

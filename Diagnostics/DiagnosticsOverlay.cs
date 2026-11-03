@@ -59,6 +59,7 @@ namespace LobotomyModernEngine.Diagnostics
             if (Input.GetKeyDown(KeyCode.F8))
             {
                 DebugGearBuffPatch.ToggleBuff();
+                DebugAgentBuffPatch.Toggle();
             }
 
             float dt = Time.unscaledDeltaTime;
@@ -182,7 +183,7 @@ namespace LobotomyModernEngine.Diagnostics
             }
 
             float width = 550f;
-            float height = 720f;
+            float height = 750f;
             Rect rect = new Rect(10f, 10f, width, height);
 
             GUI.Box(rect, GUIContent.none, _boxStyle);
@@ -353,6 +354,15 @@ namespace LobotomyModernEngine.Diagnostics
                 gearBuffOn ? _goodStyle : _warnStyle,
                 EmptyOptions);
 
+            bool agentBuffOn = DebugAgentBuffPatch.IsCurrentlyApplied;
+            GUILayout.Label(
+                string.Format("• [{0}] 初期&雇用ランク5職員: {1} (現在 {2} 名強化中)",
+                    agentBuffOn ? "ON / 稼働中" : "OFF / バニラ",
+                    agentBuffOn ? "全ステータス100(ランクV / EX)・即戦力化" : "バニラ通常ステータス",
+                    DebugAgentBuffPatch.BuffedAgentCount),
+                agentBuffOn ? _goodStyle : _warnStyle,
+                EmptyOptions);
+
             GUILayout.Space(2f);
             GUILayout.Label("【3】主要処理CPUプロファイラ (実測値・毎秒更新):", _headerStyle, EmptyOptions);
 
@@ -373,9 +383,10 @@ namespace LobotomyModernEngine.Diagnostics
             }
 
             GUILayout.BeginHorizontal(EmptyOptions);
-            if (GUILayout.Button(gearBuffOn ? "[F8] 初期装備＆懺悔をバニラに戻す" : "[F8] 初期装備＆懺悔をデバッグ強化する", _buttonStyle, EmptyOptions))
+            if (GUILayout.Button(gearBuffOn ? "[F8] デバッグ強化(装備+職員)をバニラに戻す" : "[F8] デバッグ強化(装備+ランク5職員)を適用", _buttonStyle, EmptyOptions))
             {
                 DebugGearBuffPatch.ToggleBuff();
+                DebugAgentBuffPatch.Toggle();
             }
             if (GUILayout.Button(lobEnabled ? "1-LOB強化をOFFにする" : "1-LOB強化をONにする", _buttonStyle, EmptyOptions))
             {
