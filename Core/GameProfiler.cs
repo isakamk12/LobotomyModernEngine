@@ -618,7 +618,7 @@ namespace LobotomyModernEngine.Core
                     }
                 }
 
-                sb.AppendLine("  --- [LME v0.8.4 変更前後比較指標 (スパイク回数 / GC / 最低FPS / キャッシュ効果)] ---");
+                sb.AppendLine("  --- [LME v0.8.5 変更前後比較指標 (スパイク回数 / GC / 最低FPS / 移動補間 / UI削減効果)] ---");
                 sb.AppendFormat(
                     "  * [フレーム・最低FPS] 最大フレーム時間: {0:F2}ms (瞬間最低FPS: {1:F1} FPS / 1秒平均最低FPS: {2:F1} FPS) | フレーム停止回数 (>=33.3ms: {3}回, >=50ms: {4}回, >=80ms[90ms級]: {5}回)",
                     StageMaxFrameMs, minInstantFps, StageMinRollingFps,
@@ -628,6 +628,14 @@ namespace LobotomyModernEngine.Core
                     StageMethodSpike5msCount, StageMethodSpikeWithGcCount, StageMethodSpike30msCount, StageMethodSpike80msCount,
                     StageGcGen0Delta, totalStageSeconds > 0.1f ? (StageGcGen0Delta * 60.0f / totalStageSeconds) : 0f,
                     StageGcGen1Delta, StageGcGen2Delta).AppendLine();
+                sb.AppendFormat(
+                    "  * [v0.8.5 UI更新削減] activateUI 要求: {0}回 | スキップ回避: {1}回 | 実更新: {2}回",
+                    AgentUIOptimizationPatch.AvoidedActivateUICalls + AgentUIOptimizationPatch.RealActivateUICalls,
+                    AgentUIOptimizationPatch.AvoidedActivateUICalls,
+                    AgentUIOptimizationPatch.RealActivateUICalls).AppendLine();
+                sb.AppendFormat(
+                    "  * [v0.8.5 移動描画補間] Lerp描画フレーム数: {0}回",
+                    MovementInterpolationPatch.InterpolatedFrames).AppendLine();
                 sb.AppendFormat(
                     "  * [1.UpdateBufState削減] 総呼出: {0}回 | 空リスト配列確保回避: {1}回 | バッファ再利用スナップショット: {2}回 (最大同時バフ数: {3})",
                     UnitBufStatePatch.TotalCallCount,

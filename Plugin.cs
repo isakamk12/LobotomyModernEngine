@@ -70,6 +70,8 @@ namespace LobotomyModernEngine
         public static ConfigEntry<bool> EnableUnitBufOptimization;
         public static ConfigEntry<bool> EnableSoundEffectCache;
         public static ConfigEntry<bool> EnablePathfindingBufferReuse;
+        public static ConfigEntry<bool> EnableAgentUIOptimization;
+        public static ConfigEntry<bool> EnableMovementInterpolation;
         public static ConfigEntry<int> MaxWorkerThreads;
         public static ConfigEntry<bool> EnableProfilerLog;
         public static ConfigEntry<bool> EnableCpuProfiler;
@@ -129,6 +131,8 @@ namespace LobotomyModernEngine
             EnableUnitBufOptimization = Config.Bind("Optimization", "UnitBufOptimization", true, "UnitModel.UpdateBufState の空リスト配列確保削減およびスナップショットバッファ再利用");
             EnableSoundEffectCache = Config.Bind("Optimization", "SoundEffectCache", true, "SoundEffectPlayer / CreatureUnit.PlaySound の AudioClip キャッシュ化および不在音声キーの再検索・エラーログ削減");
             EnablePathfindingBufferReuse = Config.Bind("Optimization", "PathfindingBufferReuse", true, "GraphAstar.SearchPath の探索コレクション・PathScore/SearchInfo プール再利用 (状態完全リセット＆再帰安全ガード付)");
+            EnableAgentUIOptimization = Config.Bind("Optimization", "AgentUIOptimization", true, "イェソド解放時の毎フレーム AgentUnitUI.activateUI 呼び出し・文字列結合・Textレイアウト幅計算を Dirty 検知化して GC スパイクを根絶");
+            EnableMovementInterpolation = Config.Bind("Optimization", "MovementInterpolation", true, "FixedUpdate(50Hz) と描画(60Hz+) のズレによる歩行カクつきを解消する描画専用の線形位置補間");
             MaxWorkerThreads = Config.Bind("Parallel", "MaxWorkerThreads", 4, "最大ワーカースレッド数 (1-4, 初回タスク投入時に遅延起動)");
             EnableDebugStarterGearBuff = Config.Bind("Debug", "DebugStarterGearBuff", defaultDebugFeatures, "デバッグ・検証短縮用に初期装備(警棒/スーツ)と懺悔(武器/防具)および初期・雇用職員のランク5(ALL 100)化を適用する (F8またはF9画面で即切替可)");
             EnableProfilerLog = Config.Bind("Debug", "EnableProfilerLog", true, "管理パート中に5秒おき＆ステージ終了時にCPU実測プロファイル結果をBepInExログ(LogOutput.log)へ出力する");
@@ -392,6 +396,21 @@ namespace LobotomyModernEngine
                     ApplyAndVerifyPatch(typeof(PathfindingBufferPatch.GraphAstar_SearchPath_ReusePatch), "PathfindingBuffer (GraphAstar.SearchPath Workspace Reuse)");
                 }
 
+                // v0.8.5 施策1: イェソド能力有効時の毎フレーム AgentUnitUI.activateUI 呼び出し削減 (Dirty検知)
+                if (EnableAgentUIOptimization.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(AgentUIOptimizationPatch.AgentUnitUI_activateUI_Patch), "AgentUIOptimization (Dirty Check activateUI)");
+                }
+
+                // v0.8.5 施策2: 移動描画補間 (FixedUpdate 50Hz と Update 60Hz+ のズレ解消)
+                if (EnableMovementInterpolation.Value)
+                {
+                    ApplyAndVerifyPatch(typeof(MovementInterpolationPatch.MovableObjectNode_ProcessMoveNode_SnapshotPatch), "MovementInterpolation (Snapshot Record)");
+                    ApplyAndVerifyPatch(typeof(MovementInterpolationPatch.MovableObjectNode_SetCurrentNode_Patch), "MovementInterpolation (Teleport Reset)");
+                    ApplyAndVerifyPatch(typeof(MovementInterpolationPatch.WorkerUnit_UpdateViewPosition_Patch), "MovementInterpolation (WorkerUnit Lerp)");
+                    ApplyAndVerifyPatch(typeof(MovementInterpolationPatch.CreatureUnit_Update_InterpolationPatch), "MovementInterpolation (CreatureUnit Lerp)");
+                }
+
                 // Phase C: 主要処理リアルタイムCPUプロファイラ (実測値計測 & WorkerAI内部細分化)
                 if (EnableCpuProfiler.Value)
                 {
@@ -442,6 +461,8 @@ namespace LobotomyModernEngine
             UnitBufStatePatch.ClearCache();
             SoundEffectCachePatch.OnSceneTransition(scene.name);
             PathfindingBufferPatch.ClearCache();
+            AgentUIOptimizationPatch.ClearCache();
+            MovementInterpolationPatch.ClearCache();
             GameProfiler.ResetAll();
             MainThreadDispatcher.Clear();
             FrameBudgetScheduler.Clear();
@@ -529,6 +550,6 @@ namespace LobotomyModernEngine
     {
         public const string PLUGIN_GUID = "com.isaka.lobotonymodernengine";
         public const string PLUGIN_NAME = "Lobotomy Modern Engine";
-        public const string PLUGIN_VERSION = "0.8.4";
+        public const string PLUGIN_VERSION = "0.8.5";
     }
 }
