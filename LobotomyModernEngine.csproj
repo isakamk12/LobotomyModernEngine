@@ -6,6 +6,9 @@
     <AssemblyName>LobotomyModernEngine</AssemblyName>
     <RootNamespace>LobotomyModernEngine</RootNamespace>
     <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/_</PathMap>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <!-- ゲーム本体およびBepInExの参照設定 -->
