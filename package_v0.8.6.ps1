@@ -1,14 +1,19 @@
 param(
-    [string]$ver = "0.8.6"
+    [string]$ver = "0.8.6",
+    [switch]$DeployToSteam = $false
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$proj = "E:\3DS\lobotomy\LobotomyModernEngine\LobotomyModernEngine.csproj"
-$srcDll = "E:\3DS\lobotomy\LobotomyModernEngine\bin\Release\net35\LobotomyModernEngine.dll"
-$distDir = "C:\Users\rpgmi\Documents\GitHub\LobotomyModernEngine\dist"
-$relDir = "C:\Users\rpgmi\Documents\GitHub\LobotomyModernEngine\releases\v$ver"
+$repoRoot = $PSScriptRoot
+$proj = Join-Path $repoRoot "LobotomyModernEngine.csproj"
+$srcDll = Join-Path $repoRoot "bin\Release\net35\LobotomyModernEngine.dll"
+$distDir = Join-Path $repoRoot "dist"
+$relDir = Join-Path $repoRoot "releases\v$ver"
+$templateDir = Join-Path $repoRoot "packaging\template_FullBepInEx"
+$licenseFile = Join-Path $repoRoot "LICENSE"
+$thirdPartyLicenseFile = Join-Path $repoRoot "THIRD_PARTY_LICENSES.txt"
 
 New-Item -ItemType Directory -Path $relDir -Force | Out-Null
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
@@ -17,92 +22,65 @@ $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "LME_pkg_$ver"
 if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
-function Prepare-CleanFullBepInEx {
+function Build-DistributionPackages {
     param(
-        [Parameter(Mandatory=$true)][string]$targetDir,
-        [Parameter(Mandatory=$true)][string]$dllPath
+        [Parameter(Mandatory=$true)][string]$editionName, # "Standard" or "DebugPlus"
+        [Parameter(Mandatory=$true)][string]$dllSourcePath
     )
-    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-    Copy-Item "E:\SteamLibrary\steamapps\common\LobotomyCorp\doorstop_config.ini" $targetDir -Force
-    Copy-Item "E:\SteamLibrary\steamapps\common\LobotomyCorp\winhttp.dll" $targetDir -Force
     
-    # BepInExディレクトリをコピー
-    Copy-Item "E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx" $targetDir -Recurse -Force
+    # 1. PluginOnly パッケージ構築
+    $pluginDir = Join-Path $tmp "$($editionName)_PluginOnly"
+    New-Item -ItemType Directory -Path (Join-Path $pluginDir "BepInEx\plugins") -Force | Out-Null
+    Copy-Item $dllSourcePath (Join-Path $pluginDir "BepInEx\plugins\LobotomyModernEngine.dll") -Force
+    # ライセンス文書を同梱
+    Copy-Item $licenseFile (Join-Path $pluginDir "LICENSE.txt") -Force
     
-    $bepDir = Join-Path $targetDir "BepInEx"
+    $pluginZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_$($editionName)_PluginOnly.zip"
+    if (Test-Path $pluginZip) { Remove-Item $pluginZip -Force }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($pluginDir, $pluginZip)
+    Copy-Item $pluginZip (Join-Path $relDir (Split-Path $pluginZip -Leaf)) -Force
     
-    # 1. 個人情報・実行環境ログ（LogOutput.log）を完全削除
-    $logFiles = Get-ChildItem -Path $bepDir -Filter "*LogOutput*.log" -Recurse -Force
-    foreach ($f in $logFiles) {
-        Remove-Item $f.FullName -Force
-        Write-Host "Removed dirty log: $($f.FullName)"
-    }
+    # 2. FullBepInEx パッケージ構築（Steam環境ではなく、リポジトリ内のクリーンなtemplateから構築）
+    $fullDir = Join-Path $tmp "$($editionName)_FullBepInEx"
+    New-Item -ItemType Directory -Path $fullDir -Force | Out-Null
+    Copy-Item $templateDir\* $fullDir -Recurse -Force
     
-    # 2. キャッシュフォルダ（絶対パス含む .dat）を完全削除
-    $cacheDir = Join-Path $bepDir "cache"
-    if (Test-Path $cacheDir) {
-        Remove-Item $cacheDir -Recurse -Force
-        Write-Host "Removed dirty cache dir: $cacheDir"
-    }
+    # 今回ビルドしたプラグインDLLを配置
+    $targetPluginDir = Join-Path $fullDir "BepInEx\plugins"
+    New-Item -ItemType Directory -Path $targetPluginDir -Force | Out-Null
+    Copy-Item $dllSourcePath (Join-Path $targetPluginDir "LobotomyModernEngine.dll") -Force
     
-    # 3. plugins配下のクリーンアップ（PDBや旧ファイルを除去し、今回ビルドのDLLのみ配置）
-    $pluginsDir = Join-Path $bepDir "plugins"
-    if (Test-Path $pluginsDir) {
-        Remove-Item $pluginsDir -Recurse -Force
-    }
-    New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
-    Copy-Item $dllPath (Join-Path $pluginsDir "LobotomyModernEngine.dll") -Force
+    $fullZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_$($editionName)_FullBepInEx.zip"
+    if (Test-Path $fullZip) { Remove-Item $fullZip -Force }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($fullDir, $fullZip)
+    Copy-Item $fullZip (Join-Path $relDir (Split-Path $fullZip -Leaf)) -Force
 }
 
 # --- A. Standard ビルド (デバッグ強化デフォルトOFF) ---
 Write-Host "Building Standard Edition..."
 dotnet build $proj -c Release | Out-Null
+Build-DistributionPackages -editionName "Standard" -dllSourcePath $srcDll
 
-$stdPluginDir = Join-Path $tmp "StdPluginOnly"
-New-Item -ItemType Directory -Path (Join-Path $stdPluginDir "BepInEx\plugins") -Force | Out-Null
-Copy-Item $srcDll (Join-Path $stdPluginDir "BepInEx\plugins\LobotomyModernEngine.dll") -Force
-
-$stdPluginZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_Standard_PluginOnly.zip"
-if (Test-Path $stdPluginZip) { Remove-Item $stdPluginZip -Force }
-[System.IO.Compression.ZipFile]::CreateFromDirectory($stdPluginDir, $stdPluginZip)
-Copy-Item $stdPluginZip (Join-Path $relDir (Split-Path $stdPluginZip -Leaf)) -Force
-
-$stdFullDir = Join-Path $tmp "StdFullBepInEx"
-Prepare-CleanFullBepInEx -targetDir $stdFullDir -dllPath $srcDll
-
-$stdFullZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_Standard_FullBepInEx.zip"
-if (Test-Path $stdFullZip) { Remove-Item $stdFullZip -Force }
-[System.IO.Compression.ZipFile]::CreateFromDirectory($stdFullDir, $stdFullZip)
-Copy-Item $stdFullZip (Join-Path $relDir (Split-Path $stdFullZip -Leaf)) -Force
-
-# --- B. DebugPlus ビルド (デバッグ強化デフォルトON & Steam配備) ---
+# --- B. DebugPlus ビルド (デバッグ強化デフォルトON) ---
 Write-Host "Building DebugPlus Edition..."
 dotnet build $proj -c Release -p:DefineConstants=DEBUG_PLUS | Out-Null
+Build-DistributionPackages -editionName "DebugPlus" -dllSourcePath $srcDll
 
-$dbgPluginDir = Join-Path $tmp "DbgPluginOnly"
-New-Item -ItemType Directory -Path (Join-Path $dbgPluginDir "BepInEx\plugins") -Force | Out-Null
-Copy-Item $srcDll (Join-Path $dbgPluginDir "BepInEx\plugins\LobotomyModernEngine.dll") -Force
+# --- C. 任意: Steam環境への配置（-DeployToSteam 指定時のみ） ---
+if ($DeployToSteam) {
+    $steamPlugins = "E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\plugins"
+    if (Test-Path $steamPlugins) {
+        Copy-Item $srcDll (Join-Path $steamPlugins "LobotomyModernEngine.dll") -Force
+        Write-Host "Deployed DebugPlus DLL to Steam: $steamPlugins"
+    } else {
+        Write-Warning "Steam plugins directory not found: $steamPlugins"
+    }
+} else {
+    Write-Host "Steam deployment skipped (use -DeployToSteam to deploy to game)."
+}
 
-$dbgPluginZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_DebugPlus_PluginOnly.zip"
-if (Test-Path $dbgPluginZip) { Remove-Item $dbgPluginZip -Force }
-[System.IO.Compression.ZipFile]::CreateFromDirectory($dbgPluginDir, $dbgPluginZip)
-Copy-Item $dbgPluginZip (Join-Path $relDir (Split-Path $dbgPluginZip -Leaf)) -Force
-
-$dbgFullDir = Join-Path $tmp "DbgFullBepInEx"
-Prepare-CleanFullBepInEx -targetDir $dbgFullDir -dllPath $srcDll
-
-$dbgFullZip = Join-Path $distDir "LobotomyModernEngine_v$($ver)_DebugPlus_FullBepInEx.zip"
-if (Test-Path $dbgFullZip) { Remove-Item $dbgFullZip -Force }
-[System.IO.Compression.ZipFile]::CreateFromDirectory($dbgFullDir, $dbgFullZip)
-Copy-Item $dbgFullZip (Join-Path $relDir (Split-Path $dbgFullZip -Leaf)) -Force
-
-# Steam側へ DebugPlus DLL を配備
-Copy-Item $srcDll "E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\plugins\LobotomyModernEngine.dll" -Force
-
-# E:\3DS側にもミラーコピー
-Copy-Item $distDir "E:\3DS\lobotomy\LobotomyModernEngine\dist" -Recurse -Force
-Copy-Item $relDir "E:\3DS\lobotomy\LobotomyModernEngine\releases\v$ver" -Recurse -Force
-
+# 作業用一時ディレクトリ削除
 Remove-Item $tmp -Recurse -Force
-Write-Host "All 4 sanitized ZIP packages for v$ver created successfully!"
+
+Write-Host "All 4 standalone sanitized ZIP packages for v$ver created successfully!"
 Get-ChildItem $distDir -Filter "*$ver*" | Select-Object Name, Length
