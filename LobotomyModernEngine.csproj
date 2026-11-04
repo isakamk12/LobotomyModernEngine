@@ -71,10 +71,5 @@
     </Reference>
   </ItemGroup>
 
-  <!-- ビルド後に自動でBepInEx/pluginsへコピー -->
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="E:\SteamLibrary\steamapps\common\LobotomyCorp\BepInEx\plugins" />
-  </Target>
-
 </Project>
 
